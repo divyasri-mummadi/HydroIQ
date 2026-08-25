@@ -81,3 +81,41 @@ def latest_sensors():
             }
 
     return {"message": "No sensor data found"}
+@app.get("/sensors/history")
+def sensor_history():
+
+    query_api = client.query_api()
+
+    query = f'''
+    from(bucket: "{INFLUX_BUCKET}")
+      |> range(start: -7d)
+      |> filter(fn: (r) => r["_measurement"] == "water_sensors")
+      |> pivot(
+          rowKey: ["_time"],
+          columnKey: ["_field"],
+          valueColumn: "_value"
+      )
+      |> sort(columns: ["_time"])
+    '''
+
+    tables = query_api.query(query, org=INFLUX_ORG)
+
+    history = []
+
+    for table in tables:
+        for record in table.records:
+            values = record.values
+
+            history.append({
+                "time": str(values.get("_time")),
+                "device_id": values.get("device_id"),
+                "zone": values.get("zone"),
+                "pressure": values.get("pressure"),
+                "flow": values.get("flow"),
+                "acoustic": values.get("acoustic"),
+                "ph": values.get("ph"),
+                "tds": values.get("tds"),
+                "turbidity": values.get("turbidity")
+            })
+
+    return {"data": history}
