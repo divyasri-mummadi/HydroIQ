@@ -1,5 +1,4 @@
-from filters import filter_sensor_data
-
+from analytics import analyze_sensor_data
 sensor_data = {
     "pressure": 2.6,
     "flow": 118,
@@ -8,7 +7,6 @@ sensor_data = {
     "tds": 312,
     "turbidity": 4.8
 }
+result = analyze_sensor_data(sensor_data)
 
-clean_data = filter_sensor_data(sensor_data)
-
-print(clean_data)
+print(result)

@@ -2,6 +2,7 @@ import os
 
 from fastapi import FastAPI
 from pydantic import BaseModel
+from analytics import analyze_sensor_data
 from dotenv import load_dotenv
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
@@ -119,3 +120,16 @@ def sensor_history():
             })
 
     return {"data": history}
+class SensorData(BaseModel):
+    pressure: float
+    flow: float
+    acoustic: float
+    ph: float
+    tds: float
+    turbidity: float
+
+
+@app.post("/analytics/analyze")
+def analyze_data(data: SensorData):
+    result = analyze_sensor_data(data.model_dump())
+    return result
