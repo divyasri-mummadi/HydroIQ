@@ -6,7 +6,7 @@ from analytics import analyze_sensor_data
 from dotenv import load_dotenv
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
-
+from analytics.sensor_health import calculate_sensor_health
 
 # Load values from .env
 load_dotenv()
@@ -132,6 +132,38 @@ class SensorData(BaseModel):
 @app.post("/analytics/analyze")
 def analyze_data(data: SensorData):
     result = analyze_sensor_data(data.model_dump())
+
+    sensor_health = calculate_sensor_health(data.model_dump())
+    result["sensor_health"] = sensor_health
+
+    return result
+@app.get("/analytics/latest")
+def latest_analytics():
+
+    # Get latest sensor data
+    sensor_result = latest_sensors()
+
+    # If no sensor data is available
+    if "message" in sensor_result:
+        return sensor_result
+
+    # Remove fields that analytics doesn't need
+    sensor_data = {
+        "pressure": sensor_result.get("pressure"),
+        "flow": sensor_result.get("flow"),
+        "acoustic": sensor_result.get("acoustic"),
+        "ph": sensor_result.get("ph"),
+        "tds": sensor_result.get("tds"),
+        "turbidity": sensor_result.get("turbidity")
+    }
+
+    # Run analytics
+    result = analyze_sensor_data(sensor_data)
+
+    # Add device information
+    result["device_id"] = sensor_result.get("device_id")
+    result["zone"] = sensor_result.get("zone")
+
     return result
 @app.get("/analytics/latest")
 def latest_analytics():
