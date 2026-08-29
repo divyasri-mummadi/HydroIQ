@@ -1,3 +1,5 @@
+from filters import filter_sensor_data
+
 sensor_data = {
     "pressure": 2.6,
     "flow": 118,
@@ -7,4 +9,6 @@ sensor_data = {
     "turbidity": 4.8
 }
 
-print(sensor_data)
+clean_data = filter_sensor_data(sensor_data)
+
+print(clean_data)
