@@ -133,3 +133,31 @@ class SensorData(BaseModel):
 def analyze_data(data: SensorData):
     result = analyze_sensor_data(data.model_dump())
     return result
+@app.get("/analytics/latest")
+def latest_analytics():
+
+    # Get latest sensor data
+    sensor_result = latest_sensors()
+
+    # If no sensor data is available
+    if "message" in sensor_result:
+        return sensor_result
+
+    # Remove fields that analytics doesn't need
+    sensor_data = {
+        "pressure": sensor_result.get("pressure"),
+        "flow": sensor_result.get("flow"),
+        "acoustic": sensor_result.get("acoustic"),
+        "ph": sensor_result.get("ph"),
+        "tds": sensor_result.get("tds"),
+        "turbidity": sensor_result.get("turbidity")
+    }
+
+    # Run analytics
+    result = analyze_sensor_data(sensor_data)
+
+    # Add device information
+    result["device_id"] = sensor_result.get("device_id")
+    result["zone"] = sensor_result.get("zone")
+
+    return result
