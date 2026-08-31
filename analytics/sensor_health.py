@@ -1,72 +1,50 @@
-def calculate_sensor_health(data):
-    pressure = data.get("pressure", 0)
-    flow = data.get("flow", 0)
-    acoustic = data.get("acoustic", 0)
-    ph = data.get("ph", 0)
-    tds = data.get("tds", 0)
-    turbidity = data.get("turbidity", 0)
+SENSOR_RANGES = {
+    "pressure": (0, 10),
+    "flow": (0, 500),
+    "acoustic": (0, 1),
+    "ph": (0, 14),
+    "tds": (0, 1000),
+    "turbidity": (0, 100),
+}
 
+
+def calculate_sensor_health(sensor_data):
     sensors = {}
 
-    # Pressure
-    if pressure < 0:
-        sensors["pressure"] = 0
-    elif pressure < 2.0 or pressure > 5.0:
-        sensors["pressure"] = 70
-    else:
-        sensors["pressure"] = 100
+    for name, (minimum, maximum) in SENSOR_RANGES.items():
+        value = sensor_data.get(name)
 
-    # Flow
-    if flow < 0:
-        sensors["flow"] = 0
-    elif flow < 50 or flow > 200:
-        sensors["flow"] = 70
-    else:
-        sensors["flow"] = 100
+        if value is None:
+            score = 0
+            status = "Fault"
 
-    # Acoustic
-    if acoustic < 0:
-        sensors["acoustic"] = 0
-    elif acoustic > 0.75:
-        sensors["acoustic"] = 70
-    else:
-        sensors["acoustic"] = 100
+        elif value < minimum or value > maximum:
+            score = 50
+            status = "Warning"
 
-    # pH
-    if ph <= 0 or ph > 14:
-        sensors["ph"] = 0
-    elif ph < 6.5 or ph > 8.5:
-        sensors["ph"] = 70
-    else:
-        sensors["ph"] = 100
+        else:
+            score = 100
+            status = "Healthy"
 
-    # TDS
-    if tds < 0:
-        sensors["tds"] = 0
-    elif tds > 500:
-        sensors["tds"] = 70
-    else:
-        sensors["tds"] = 100
+        sensors[name] = {
+            "score": score,
+            "status": status
+        }
 
-    # Turbidity
-    if turbidity < 0:
-        sensors["turbidity"] = 0
-    elif turbidity > 5:
-        sensors["turbidity"] = 70
-    else:
-        sensors["turbidity"] = 100
+    overall_score = round(
+        sum(sensor["score"] for sensor in sensors.values())
+        / len(sensors)
+    )
 
-    overall = round(sum(sensors.values()) / len(sensors))
-
-    if overall >= 90:
-        status = "Excellent"
-    elif overall >= 70:
-        status = "Needs Attention"
+    if overall_score >= 80:
+        overall_status = "Healthy"
+    elif overall_score >= 50:
+        overall_status = "Warning"
     else:
-        status = "Poor"
+        overall_status = "Fault"
 
     return {
-        "overall_score": overall,
-        "status": status,
+        "overall_score": overall_score,
+        "status": overall_status,
         "sensors": sensors
     }
