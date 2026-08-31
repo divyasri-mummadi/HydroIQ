@@ -1,17 +1,16 @@
-<<<<<<< HEAD
-=======
 import os
-
 import joblib
 import pandas as pd
 
->>>>>>> 1847f5a0e9e4a0331ab862eca60940ddd5f1f134
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from dotenv import load_dotenv
 
 from analytics import analyze_sensor_data
-<<<<<<< HEAD
+from analytics.sensor_health import calculate_sensor_health
+from analytics.filters import filter_sensor_data
+from analytics.prioritization import calculate_priority
 
 from backend.database.influxdb import (
     query_api,
@@ -22,9 +21,19 @@ from backend.database.influxdb import (
 from backend.mqtt_service import start_mqtt_background
 
 
-# ============================================================
+
+# LOAD ENVIRONMENT VARIABLES
+
+
+load_dotenv()
+
+INFLUX_URL = os.getenv("INFLUX_URL")
+INFLUX_TOKEN = os.getenv("INFLUX_TOKEN")
+
+
+
 # APP
-# ============================================================
+
 
 app = FastAPI(
     title="HydroIQ Backend",
@@ -33,15 +42,16 @@ app = FastAPI(
 )
 
 
-# ============================================================
 # CORS
-# ============================================================
+
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -49,9 +59,7 @@ app.add_middleware(
 )
 
 
-# ============================================================
-# DEVICE -> ZONE MAPPING
-# ============================================================
+
 
 DEVICE_ZONE_MAP = {
     "ESP32_Node_1": "Zone_A",
@@ -61,9 +69,7 @@ DEVICE_ZONE_MAP = {
 }
 
 
-# ============================================================
-# ZONE INFORMATION
-# ============================================================
+
 
 ZONE_INFO = {
     "Zone_A": {
@@ -92,64 +98,14 @@ ZONE_INFO = {
 }
 
 
-# ============================================================
-# START MQTT
-# ============================================================
+
 
 @app.on_event("startup")
 def startup_event():
     start_mqtt_background()
-=======
-from analytics.sensor_health import calculate_sensor_health
-from analytics.filters import filter_sensor_data
-from analytics.prioritization import calculate_priority
-from dotenv import load_dotenv
-
-from influxdb_client import InfluxDBClient
-from influxdb_client.client.write_api import SYNCHRONOUS
 
 
-# ============================================================
-# LOAD ENVIRONMENT VARIABLES
-# ============================================================
 
-load_dotenv()
-
-INFLUX_URL = os.getenv("INFLUX_URL")
-INFLUX_TOKEN = os.getenv("INFLUX_TOKEN")
-INFLUX_ORG = os.getenv("INFLUX_ORG")
-INFLUX_BUCKET = os.getenv("INFLUX_BUCKET")
-
-
-# ============================================================
-# FASTAPI
-# ============================================================
-
-app = FastAPI(
-    title="HydroIQ Backend",
-    description="Water network intelligence and ML analytics system",
-    version="1.0"
-)
-
-
-# ============================================================
-# INFLUXDB CONNECTION
-# ============================================================
-
-client = InfluxDBClient(
-    url=INFLUX_URL,
-    token=INFLUX_TOKEN,
-    org=INFLUX_ORG
-)
-
-write_api = client.write_api(
-    write_options=SYNCHRONOUS
-)
-
-
-# ============================================================
-# LOAD TRAINED ML MODEL
-# ============================================================
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(
@@ -165,12 +121,8 @@ MODEL_FILE = os.path.join(
 ml_model = joblib.load(MODEL_FILE)
 
 print("HydroIQ ML model loaded successfully!")
->>>>>>> 1847f5a0e9e4a0331ab862eca60940ddd5f1f134
 
 
-# ============================================================
-# SENSOR DATA MODEL
-# ============================================================
 
 class SensorData(BaseModel):
     pressure: float
@@ -181,35 +133,21 @@ class SensorData(BaseModel):
     turbidity: float
 
 
-# ============================================================
-# HOME
-# ============================================================
+
 
 @app.get("/")
 def home():
     return {
         "message": "HydroIQ Backend Running",
-<<<<<<< HEAD
         "status": "online",
-=======
-        "ml_model": "loaded"
->>>>>>> 1847f5a0e9e4a0331ab862eca60940ddd5f1f134
+        "ml_model": "loaded",
     }
 
 
-# ============================================================
-<<<<<<< HEAD
-=======
-# ML PREDICTION FUNCTION
-# ============================================================
+
 
 def predict_ml(sensor_data):
-    """
-    Run the trained HydroIQ ML model on sensor readings.
-    """
 
-    # IMPORTANT:
-    # These names must match the names used while training
     ml_input = pd.DataFrame(
         [
             {
@@ -218,20 +156,17 @@ def predict_ml(sensor_data):
                 "acoustic": sensor_data["acoustic"],
                 "pH": sensor_data["ph"],
                 "tds": sensor_data["tds"],
-                "turbidity": sensor_data["turbidity"]
+                "turbidity": sensor_data["turbidity"],
             }
         ]
     )
 
-    # Prediction
     prediction = ml_model.predict(ml_input)[0]
 
-    # Probability / confidence
     probabilities = ml_model.predict_proba(ml_input)[0]
 
     confidence = float(max(probabilities))
 
-    # Store probability of every class
     class_probabilities = {}
 
     for class_name, probability in zip(
@@ -246,14 +181,11 @@ def predict_ml(sensor_data):
     return {
         "prediction": prediction,
         "confidence": round(confidence, 4),
-        "class_probabilities": class_probabilities
+        "class_probabilities": class_probabilities,
     }
 
 
-# ============================================================
->>>>>>> 1847f5a0e9e4a0331ab862eca60940ddd5f1f134
-# LATEST SENSOR DATA
-# ============================================================
+
 
 @app.get("/sensors/latest")
 def latest_sensors():
@@ -272,15 +204,10 @@ def latest_sensors():
 
     tables = query_api.query(
         query,
-<<<<<<< HEAD
         org=INFLUX_ORG,
     )
 
     latest_by_device = {}
-=======
-        org=INFLUX_ORG
-    )
->>>>>>> 1847f5a0e9e4a0331ab862eca60940ddd5f1f134
 
     for table in tables:
 
@@ -290,17 +217,14 @@ def latest_sensors():
 
             device_id = values.get("device_id")
 
-            # Ignore records without device ID
             if not device_id:
                 continue
 
-            # Ignore unknown devices
             if device_id not in DEVICE_ZONE_MAP:
                 continue
 
             timestamp = values.get("_time")
 
-            # Keep only newest reading
             if device_id in latest_by_device:
 
                 old_timestamp = latest_by_device[
@@ -339,11 +263,6 @@ def latest_sensors():
                 "turbidity": values.get("turbidity"),
             }
 
-<<<<<<< HEAD
-
-    # ========================================================
-    # CONVERT TO LIST
-    # ========================================================
 
     zones = []
 
@@ -375,10 +294,6 @@ def latest_sensors():
         })
 
 
-    # ========================================================
-    # NO DATA
-    # ========================================================
-
     if not zones:
 
         return {
@@ -389,16 +304,9 @@ def latest_sensors():
 
     return {
         "zones": zones,
-=======
-    return {
-        "message": "No sensor data found"
->>>>>>> 1847f5a0e9e4a0331ab862eca60940ddd5f1f134
     }
 
 
-# ============================================================
-# SENSOR HISTORY
-# ============================================================
 
 @app.get("/sensors/history")
 def sensor_history():
@@ -417,11 +325,7 @@ def sensor_history():
 
     tables = query_api.query(
         query,
-<<<<<<< HEAD
         org=INFLUX_ORG,
-=======
-        org=INFLUX_ORG
->>>>>>> 1847f5a0e9e4a0331ab862eca60940ddd5f1f134
     )
 
     history = []
@@ -432,15 +336,13 @@ def sensor_history():
 
             values = record.values
 
-<<<<<<< HEAD
-            device_id = values.get(
-                "device_id"
-            )
+            device_id = values.get("device_id")
 
-            # Ignore unknown devices
-            if device_id not in DEVICE_ZONE_MAP:
+            if not device_id:
                 continue
 
+            if device_id not in DEVICE_ZONE_MAP:
+                continue
 
             history.append({
 
@@ -471,137 +373,67 @@ def sensor_history():
                 ),
             })
 
-=======
-            history.append(
-                {
-                    "time": str(values.get("_time")),
-                    "device_id": values.get("device_id"),
-                    "zone": values.get("zone"),
-                    "pressure": values.get("pressure"),
-                    "flow": values.get("flow"),
-                    "acoustic": values.get("acoustic"),
-                    "ph": values.get("ph"),
-                    "tds": values.get("tds"),
-                    "turbidity": values.get("turbidity")
-                }
-            )
-
-    return {
-        "data": history
-    }
->>>>>>> 1847f5a0e9e4a0331ab862eca60940ddd5f1f134
 
     return {
         "data": history
     }
 
 
-# ============================================================
-# MANUAL ANALYTICS TEST
-# ============================================================
-
-# ============================================================
-# ANALYZE SENSOR DATA
-# ============================================================
 
 @app.post("/analytics/analyze")
-<<<<<<< HEAD
-def analyze_data(
-    data: SensorData
-):
-
-    # IMPORTANT:
-    # analyze_sensor_data currently accepts
-    # ONLY the sensor data dictionary.
-
-    result = analyze_sensor_data(
-        data.model_dump()
-    )
-
-=======
 def analyze_data(data: SensorData):
 
-    # Convert Pydantic model to dictionary
     sensor_data = data.model_dump()
 
-    # --------------------------------------------------------
-    # 1. KALMAN FILTER
-    # --------------------------------------------------------
-
+    # 1. Kalman filter
     filtered_data = filter_sensor_data(
         sensor_data
     )
 
-    # --------------------------------------------------------
-    # 2. EXISTING HYDROIQ ANALYTICS
-    # --------------------------------------------------------
-
+    # 2. Existing HydroIQ analytics
     result = analyze_sensor_data(
         filtered_data
     )
 
-    # --------------------------------------------------------
-    # 3. SENSOR HEALTH
-    # --------------------------------------------------------
-
+    # 3. Sensor health
     sensor_health = calculate_sensor_health(
         filtered_data
     )
 
     result["sensor_health"] = sensor_health
 
-    # --------------------------------------------------------
-    # 4. MACHINE LEARNING
-    # --------------------------------------------------------
-
+    # 4. Machine learning
     ml_result = predict_ml(
         filtered_data
     )
 
     result["ml_prediction"] = ml_result
+
+    # 5. Priority
     priority = calculate_priority(
-    result,
-    ml_result,
-    sensor_health
-)
+        result,
+        ml_result,
+        sensor_health,
+    )
 
     result["priority"] = priority
 
-    # --------------------------------------------------------
-    # 5. RETURN COMPLETE RESULT
-    # --------------------------------------------------------
-
->>>>>>> 1847f5a0e9e4a0331ab862eca60940ddd5f1f134
     return result
 
 
-# ============================================================
-<<<<<<< HEAD
-# LATEST ANALYTICS - ALL ZONES
-=======
-# LATEST ANALYTICS + ML
->>>>>>> 1847f5a0e9e4a0331ab862eca60940ddd5f1f134
-# ============================================================
+
 
 @app.get("/analytics/latest")
 def latest_analytics():
 
-<<<<<<< HEAD
-    # ========================================================
-    # GET LATEST SENSOR DATA
-    # ========================================================
+    
 
     sensor_result = latest_sensors()
 
 
-    # ========================================================
-    # NO DATA
-    # ========================================================
-
     if not sensor_result.get("zones"):
 
         return {
-
             "zones": [],
 
             "priority_zones": [],
@@ -609,13 +441,9 @@ def latest_analytics():
             "highest_priority": None,
 
             "network": {
-
                 "risk_score": 0,
-
                 "active_alerts": 0,
-
                 "water_quality_index": 0,
-
                 "monitored_zones": 0,
             },
 
@@ -626,25 +454,19 @@ def latest_analytics():
     analyzed_zones = []
 
 
-    # ========================================================
-    # ANALYZE EACH ZONE
-    # ========================================================
+   
 
     for zone_data in sensor_result["zones"]:
 
-        zone_name = zone_data.get(
-            "zone"
-        )
+        zone_name = zone_data.get("zone")
 
 
         # ----------------------------------------------------
-        # GET LOCATION INFORMATION
+        # LOCATION INFORMATION
         # ----------------------------------------------------
 
         location_info = ZONE_INFO.get(
-
             zone_name,
-
             {
                 "location_score": 0,
                 "population": 0,
@@ -686,28 +508,60 @@ def latest_analytics():
 
 
         # ----------------------------------------------------
-        # HYDROIQ ANALYTICS
-        # ----------------------------------------------------
-        #
-        # IMPORTANT:
-        # Pass ONLY sensor_data.
-        #
-        # This fixes:
-        #
-        # TypeError:
-        # analyze_sensor_data()
-        # takes 1 positional argument
-        # but 2 were given
-        #
+        # KALMAN FILTER
         # ----------------------------------------------------
 
-        result = analyze_sensor_data(
+        filtered_data = filter_sensor_data(
             sensor_data
         )
 
 
         # ----------------------------------------------------
-        # ADD ZONE INFORMATION
+        # HYDROIQ ANALYTICS
+        # ----------------------------------------------------
+
+        result = analyze_sensor_data(
+            filtered_data
+        )
+
+
+        # ----------------------------------------------------
+        # SENSOR HEALTH
+        # ----------------------------------------------------
+
+        sensor_health = calculate_sensor_health(
+            filtered_data
+        )
+
+        result["sensor_health"] = sensor_health
+
+
+        # ----------------------------------------------------
+        # MACHINE LEARNING
+        # ----------------------------------------------------
+
+        ml_result = predict_ml(
+            filtered_data
+        )
+
+        result["ml_prediction"] = ml_result
+
+
+        # ----------------------------------------------------
+        # PRIORITY
+        # ----------------------------------------------------
+
+        priority = calculate_priority(
+            result,
+            ml_result,
+            sensor_health,
+        )
+
+        result["priority"] = priority
+
+
+        # ----------------------------------------------------
+        # ZONE INFORMATION
         # ----------------------------------------------------
 
         result["device_id"] = zone_data.get(
@@ -734,7 +588,7 @@ def latest_analytics():
 
 
         # ----------------------------------------------------
-        # KEEP LOCATION SCORE IN PRIORITY DATA
+        # LOCATION SCORE IN PRIORITY
         # ----------------------------------------------------
 
         if result.get("priority") is not None:
@@ -751,9 +605,7 @@ def latest_analytics():
         )
 
 
-    # ========================================================
-    # SORT ALL ZONES BY RISK
-    # ========================================================
+    
 
     analyzed_zones.sort(
 
@@ -770,9 +622,6 @@ def latest_analytics():
     )
 
 
-    # ========================================================
-    # ONLY PROBLEMATIC ZONES
-    # ========================================================
 
     priority_zones = [
 
@@ -786,120 +635,19 @@ def latest_analytics():
     ]
 
 
-    # ========================================================
-    # PRIORITY ORDER
-    # ========================================================
+ 
 
     priority_order = {
 
         "P1": 1,
-
         "P2": 2,
-
         "P3": 3,
-
         "P4": 4,
-
         "P5": 5,
     }
 
 
     priority_zones.sort(
-=======
-    # --------------------------------------------------------
-    # 1. GET LATEST SENSOR READING
-    # --------------------------------------------------------
-
-    sensor_result = latest_sensors()
-
-    if "message" in sensor_result:
-        return sensor_result
-
-
-    # --------------------------------------------------------
-    # 2. EXTRACT SENSOR DATA
-    # --------------------------------------------------------
-
-    sensor_data = {
-        "pressure": sensor_result.get("pressure"),
-        "flow": sensor_result.get("flow"),
-        "acoustic": sensor_result.get("acoustic"),
-        "ph": sensor_result.get("ph"),
-        "tds": sensor_result.get("tds"),
-        "turbidity": sensor_result.get("turbidity")
-    }
-
-
-    # --------------------------------------------------------
-    # 3. KALMAN FILTER
-    # --------------------------------------------------------
-
-    filtered_data = filter_sensor_data(
-        sensor_data
-    )
-
-
-    # --------------------------------------------------------
-    # 4. EXISTING ANALYTICS
-    # --------------------------------------------------------
-
-    result = analyze_sensor_data(
-        filtered_data
-    )
-
-
-    # --------------------------------------------------------
-    # 5. SENSOR HEALTH
-    # --------------------------------------------------------
-
-    sensor_health = calculate_sensor_health(
-        filtered_data
-    )
-
-    result["sensor_health"] = sensor_health
-
-
-    # --------------------------------------------------------
-    # 6. MACHINE LEARNING
-    # --------------------------------------------------------
-
-    ml_result = predict_ml(
-        filtered_data
-    )
-
-    result["ml_prediction"] = ml_result
-
-
-    # --------------------------------------------------------
-    # 7. PRIORITIZATION
-    # --------------------------------------------------------
-
-    priority = calculate_priority(
-        result,
-        ml_result,
-        sensor_health
-    )
-
-    result["priority"] = priority
-
-
-    # --------------------------------------------------------
-    # 8. DEVICE INFORMATION
-    # --------------------------------------------------------
-
-    result["device_id"] = sensor_result.get(
-        "device_id"
-    )
-
-    result["zone"] = sensor_result.get(
-        "zone"
-    )
-
-
-    # --------------------------------------------------------
-    # 9. RETURN FINAL RESULT
-    # --------------------------------------------------------
->>>>>>> 1847f5a0e9e4a0331ab862eca60940ddd5f1f134
 
         key=lambda zone: (
 
@@ -927,9 +675,7 @@ def latest_analytics():
     )
 
 
-    # ========================================================
-    # HIGHEST PRIORITY
-    # ========================================================
+   
 
     highest_priority = None
 
@@ -940,9 +686,6 @@ def latest_analytics():
         )
 
 
-    # ========================================================
-    # NETWORK RISK
-    # ========================================================
 
     network_risk = 0
 
@@ -962,7 +705,6 @@ def latest_analytics():
             network_risk = risk_score
 
 
-    # Priority score can also contribute
     for zone in priority_zones:
 
         priority_score = zone.get(
@@ -984,18 +726,13 @@ def latest_analytics():
     )
 
 
-    # ========================================================
-    # ACTIVE ALERTS
-    # ========================================================
+  
 
     active_alerts = len(
         priority_zones
     )
 
 
-    # ========================================================
-    # WATER QUALITY INDEX
-    # ========================================================
 
     quality_scores = []
 
@@ -1014,40 +751,28 @@ def latest_analytics():
 
         if status == "Good":
 
-            quality_scores.append(
-                100
-            )
+            quality_scores.append(100)
 
         elif status == "Fair":
 
-            quality_scores.append(
-                70
-            )
+            quality_scores.append(70)
 
         elif status == "Poor":
 
-            quality_scores.append(
-                40
-            )
+            quality_scores.append(40)
 
         else:
 
-            quality_scores.append(
-                0
-            )
+            quality_scores.append(0)
 
 
     if quality_scores:
 
         water_quality_index = round(
 
-            sum(
-                quality_scores
-            )
+            sum(quality_scores)
             /
-            len(
-                quality_scores
-            )
+            len(quality_scores)
         )
 
     else:
@@ -1055,9 +780,6 @@ def latest_analytics():
         water_quality_index = 0
 
 
-    # ========================================================
-    # FINAL RESPONSE
-    # ========================================================
 
     return {
 
