@@ -1,7 +1,6 @@
 import axios from 'axios';
 
-// Update this port to match your backend (e.g., FastAPI default is 8000)
-const BASE_URL = 'http://localhost:8000';
+const BASE_URL = 'http://127.0.0.1:8000';
 
 export const fetchLatestSensorData = async () => {
   try {
@@ -20,5 +19,16 @@ export const fetchSensorHistory = async () => {
   } catch (error) {
     console.error("Error fetching history telemetry:", error);
     return [];
+  }
+};
+
+
+export const fetchLatestAnalytics = async () => {
+  try {
+    const response = await axios.get(`${BASE_URL}/analytics/latest`);
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching latest analytics:", error);
+    return null;
   }
 };

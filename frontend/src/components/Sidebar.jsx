@@ -1,12 +1,15 @@
 import React from 'react';
-import { Activity, Droplet, Shield, Cpu, AlertTriangle } from 'lucide-react';
+import { Activity, Droplet, Shield, Cpu, AlertTriangle, MapPin, Bell } from 'lucide-react';
 
 export default function Sidebar({ activeTab, setActiveTab }) {
   const menuItems = [
     { id: 'overview', label: 'Overview', icon: Activity },
     { id: 'leak-detection', label: 'Leak Detection', icon: AlertTriangle },
+    {id: 'leak-localization', label: 'Leak Localization', icon: MapPin }, 
+    {id: 'alerts', label: 'Alerts', icon: Bell },
     { id: 'maintenance', label: 'Risk & Maintenance', icon: Shield },
     { id: 'sensors', label: 'Sensors & Devices', icon: Cpu },
+    
   ];
 
   return (
