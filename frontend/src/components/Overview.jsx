@@ -80,6 +80,7 @@ const normalizeAnalytics = (response) => {
     return [];
   }
 
+  // Backend returns multiple zones
   if (Array.isArray(response)) {
     return response;
   }
@@ -88,9 +89,18 @@ const normalizeAnalytics = (response) => {
     return response.zones;
   }
 
+  // Backend currently returns one analytics object
+  if (
+    response.device_id ||
+    response.sensor_data ||
+    response.ml_prediction ||
+    response.priority
+  ) {
+    return [response];
+  }
+
   return [];
 };
-
 
 // ============================================================
 // SENSOR VALUES
@@ -445,11 +455,10 @@ export default function Overview() {
   const [historyData, setHistoryData] =
     useState([]);
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [lastUpdated, setLastUpdated] =
-    useState(null);
+  const [networkData, setNetworkData] =
+  useState(null);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
 
   // ==========================================================
@@ -481,11 +490,14 @@ export default function Overview() {
          */
 
         const analytics =
-          await fetchLatestAnalytics();
+  await fetchLatestAnalytics();
 
-        let analyticsZones =
-          normalizeAnalytics(analytics);
+if (analytics?.network) {
+  setNetworkData(analytics.network);
+}
 
+let analyticsZones =
+  normalizeAnalytics(analytics);
 
         // ------------------------------------------------------
         // FALLBACK TO SENSOR DATA IF ANALYTICS FAILS
@@ -800,20 +812,10 @@ export default function Overview() {
         );
 
 
-      const highestRisk =
-        zones.reduce(
-          (highest, zone) => {
-
-            return Math.max(
-              highest,
-              numberValue(
-                zone?.risk?.score
-              )
-            );
-
-          },
-          0
-        );
+      const highestRisk = numberValue(
+  networkData?.risk_score,
+  0
+);
 
 
       // ------------------------------------------------------
@@ -885,7 +887,7 @@ export default function Overview() {
         waterQualityIndex,
       };
 
-    }, [zones]);
+    }, [zones,networkData]);
 
 
   // ==========================================================
