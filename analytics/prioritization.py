@@ -4,47 +4,56 @@
 
 def calculate_priority(analytics_result, ml_result, sensor_health):
     """
-    Combines existing risk information, ML prediction,
-    ML confidence and sensor health to calculate an
-    operator-oriented priority.
+    Combines:
+        - Existing WRS / risk score
+        - ML prediction
+        - ML confidence
+        - Sensor health
+
+    Produces an operator-oriented maintenance priority.
     """
 
+    analytics_result = analytics_result or {}
+    ml_result = ml_result or {}
+    sensor_health = sensor_health or {}
+
     # --------------------------------------------------------
-    # EXISTING RISK SCORE
+    # EXISTING RISK / WRS SCORE
     # --------------------------------------------------------
 
-    risk = analytics_result.get("risk", {})
+    risk = analytics_result.get("risk") or {}
 
     base_risk = float(
-        risk.get("score", 0)
+        risk.get("score", 0) or 0
     )
 
-    # Keep the score within 0-100
     base_risk = max(
         0,
         min(100, base_risk)
     )
 
-
     # --------------------------------------------------------
     # ML PREDICTION
     # --------------------------------------------------------
 
-    prediction = ml_result.get(
-        "prediction",
-        "UNKNOWN"
-    )
+    prediction = str(
+        ml_result.get(
+            "prediction",
+            analytics_result.get("condition", {}).get(
+                "condition",
+                "UNKNOWN"
+            )
+        )
+    ).upper()
 
     confidence = float(
-        ml_result.get("confidence", 0)
+        ml_result.get("confidence", 0) or 0
     )
 
-    # Confidence is expected between 0 and 1
     confidence = max(
         0,
         min(1, confidence)
     )
-
 
     # --------------------------------------------------------
     # ML SEVERITY
@@ -54,14 +63,15 @@ def calculate_priority(analytics_result, ml_result, sensor_health):
         "NORMAL": 0,
         "EARLY_ANOMALY": 45,
         "SENSOR_FAULT": 55,
-        "LEAK": 100
+        "WATER_QUALITY": 70,
+        "LEAK": 100,
+        "CRITICAL": 100
     }
 
     ml_severity = severity_map.get(
         prediction,
         0
     )
-
 
     # --------------------------------------------------------
     # SENSOR HEALTH
@@ -71,7 +81,7 @@ def calculate_priority(analytics_result, ml_result, sensor_health):
         sensor_health.get(
             "overall_score",
             100
-        )
+        ) or 100
     )
 
     health_score = max(
@@ -79,20 +89,8 @@ def calculate_priority(analytics_result, ml_result, sensor_health):
         min(100, health_score)
     )
 
-
     # --------------------------------------------------------
     # EFFECTIVE ML SEVERITY
-    # --------------------------------------------------------
-    #
-    # If sensors are unhealthy, we reduce the influence
-    # of the ML prediction.
-    #
-    # Example:
-    #
-    # ML says LEAK with 95% confidence
-    # but sensor health is only 50%
-    #
-    # → effective confidence becomes lower.
     # --------------------------------------------------------
 
     effective_ml_severity = (
@@ -101,15 +99,12 @@ def calculate_priority(analytics_result, ml_result, sensor_health):
         * (health_score / 100)
     )
 
-
     # --------------------------------------------------------
     # FINAL PRIORITY SCORE
-    # --------------------------------------------------------
     #
-    # 50% existing risk
-    # 40% ML severity/confidence
+    # 50% WRS / existing risk
+    # 40% ML severity + confidence
     # 10% sensor reliability
-    #
     # --------------------------------------------------------
 
     priority_score = (
@@ -125,6 +120,10 @@ def calculate_priority(analytics_result, ml_result, sensor_health):
         min(100, priority_score)
     )
 
+    priority_score = round(
+        priority_score,
+        2
+    )
 
     # --------------------------------------------------------
     # PRIORITY LEVEL
@@ -153,41 +152,87 @@ def calculate_priority(analytics_result, ml_result, sensor_health):
 
         priority = "LOW"
 
+    # --------------------------------------------------------
+    # PRIORITY CODE
+    #
+    # Useful for frontend and maintenance queue.
+    # --------------------------------------------------------
+
+    priority_code = {
+        "CRITICAL": "P1",
+        "HIGH": "P2",
+        "MEDIUM": "P3",
+        "LOW": "P4"
+    }.get(
+        priority,
+        "P4"
+    )
 
     # --------------------------------------------------------
     # RECOMMENDED ACTION
     # --------------------------------------------------------
 
-    if prediction == "LEAK":
+    if prediction in ("LEAK", "CRITICAL"):
 
         if priority == "CRITICAL":
+
             action = (
-                "Immediate inspection and leak isolation "
-                "recommended."
+                "Immediately isolate the affected zone "
+                "and dispatch an emergency repair crew."
             )
+
+            response_time = "Immediate"
+            dispatch_required = True
 
         elif priority == "HIGH":
+
             action = (
-                "Dispatch inspection team to investigate "
-                "possible leak."
+                "Dispatch an inspection team urgently "
+                "to investigate the possible leak."
             )
 
+            response_time = "Within 1 hour"
+            dispatch_required = True
+
         else:
+
             action = (
-                "Inspect network segment for possible leak."
+                "Inspect the network segment for "
+                "possible pipeline failure."
             )
+
+            response_time = "Within 24 hours"
+            dispatch_required = False
+
+    elif prediction == "WATER_QUALITY":
+
+        action = (
+            "Verify water-quality readings and inspect "
+            "the affected zone before restoring normal operation."
+        )
+
+        response_time = "Within 24 hours"
+        dispatch_required = True
 
     elif prediction == "EARLY_ANOMALY":
 
         action = (
-            "Monitor trend and schedule preventive inspection."
+            "Monitor the trend and schedule "
+            "a preventive field inspection."
         )
+
+        response_time = "Within 24 hours"
+        dispatch_required = False
 
     elif prediction == "SENSOR_FAULT":
 
         action = (
-            "Inspect or recalibrate the affected sensor."
+            "Inspect or recalibrate the affected sensor "
+            "and validate readings against nearby nodes."
         )
+
+        response_time = "Within 24 hours"
+        dispatch_required = False
 
     else:
 
@@ -195,18 +240,49 @@ def calculate_priority(analytics_result, ml_result, sensor_health):
             "Continue normal monitoring."
         )
 
+        response_time = "Routine"
+        dispatch_required = False
+
+    # --------------------------------------------------------
+    # EXPLANATION
+    # --------------------------------------------------------
+
+    evidence = []
+
+    if base_risk > 0:
+        evidence.append(
+            f"WRS risk score: {round(base_risk, 1)}/100"
+        )
+
+    if prediction != "NORMAL" and prediction != "UNKNOWN":
+        evidence.append(
+            f"ML condition: {prediction}"
+        )
+
+    if confidence > 0:
+        evidence.append(
+            f"ML confidence: {round(confidence * 100)}%"
+        )
+
+    evidence.append(
+        f"Sensor health: {round(health_score, 1)}%"
+    )
+
+    explanation = (
+        "Priority is based on WRS risk, predicted condition, "
+        "model confidence and sensor reliability."
+    )
 
     # --------------------------------------------------------
     # RETURN RESULT
     # --------------------------------------------------------
 
     return {
-        "score": round(
-            priority_score,
-            2
-        ),
+        "score": priority_score,
 
         "level": priority,
+
+        "priority": priority_code,
 
         "prediction": prediction,
 
@@ -220,5 +296,13 @@ def calculate_priority(analytics_result, ml_result, sensor_health):
             2
         ),
 
-        "recommended_action": action
+        "recommended_action": action,
+
+        "response_time": response_time,
+
+        "dispatch_required": dispatch_required,
+
+        "explanation": explanation,
+
+        "evidence": evidence
     }

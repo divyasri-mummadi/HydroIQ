@@ -1,0 +1,8 @@
+ frontend/src/App.js                       |   60 [32m+[m[31m-[m
+ frontend/src/components/Alerts.jsx        |  172 [32m+++[m[31m--[m
+ frontend/src/components/LeakDetection.jsx |    6 [32m+[m[31m-[m
+ frontend/src/components/Maintenance.jsx   | 1032 [32m++++++++++++++++++++++[m[31m----[m
+ frontend/src/components/NetworkMap.jsx    | 1114 [32m+++++++++++++++++++++++++++++[m
+ frontend/src/components/Sensors.jsx       |    8 [32m+[m[31m-[m
+ frontend/src/components/Sidebar.jsx       |   26 [32m+[m[31m-[m
+ 7 files changed, 2161 insertions(+), 257 deletions(-)

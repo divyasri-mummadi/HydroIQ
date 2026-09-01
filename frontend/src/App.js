@@ -7,6 +7,9 @@ import Sensors from './components/Sensors';
 import Alerts from './components/Alerts';
 import LeakLocalization from './components/LeakLocalization';
 import Simulation from './components/Simulation';
+import NetworkMap from './components/NetworkMap';
+import LeakDetection from './components/LeakDetection';
+import WaterQuality from './components/WaterQuality';
 
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -28,30 +31,13 @@ function App() {
 
         {/* NETWORK MAP */}
         {activeTab === 'network-map' && (
-          <div className="p-6">
-            <h2 className="text-2xl font-bold">
-              Network Map
-            </h2>
-
-            <p className="text-gray-400 mt-2">
-              Live pipeline network topology
-            </p>
-          </div>
-        )}
+  <NetworkMap />
+)}
 
         {/* LEAK DETECTION */}
         {activeTab === 'leak-detection' && (
-          <div className="p-6">
-            <h2 className="text-2xl font-bold">
-              Leak Detection
-            </h2>
-
-            <p className="text-gray-400 mt-2">
-              Multi-sensor pipeline leak analysis
-            </p>
-          </div>
-        )}
-
+  <LeakDetection />
+)}
         {/* LEAK LOCALIZATION */}
         {activeTab === 'leak-localization' && (
           <LeakLocalization />
@@ -59,16 +45,8 @@ function App() {
 
         {/* WATER QUALITY */}
         {activeTab === 'water-quality' && (
-          <div className="p-6">
-            <h2 className="text-2xl font-bold">
-              Water Quality
-            </h2>
-
-            <p className="text-gray-400 mt-2">
-              Water quality monitoring across the network
-            </p>
-          </div>
-        )}
+  <WaterQuality />
+)}
 
         {/* ALERTS */}
         {activeTab === 'alerts' && (
