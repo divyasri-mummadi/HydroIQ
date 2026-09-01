@@ -52,78 +52,108 @@ export default function Alerts() {
     );
   }
 
-  const leak = analysis.leak || {};
-  const condition = analysis.condition || {};
-  const quality = analysis.water_quality || {};
-  const risk = analysis.risk || {};
-
-  const deviceId = analysis.device_id || 'ESP32_Node_1';
-  const zone = analysis.zone || 'Zone_A';
+  const zones = analysis.zones || [];
 
   const alerts = [];
 
-  // Leak alert
-  if (leak.leak_detected) {
-    alerts.push({
-      id: 'leak',
-      type: 'CRITICAL',
-      title: 'Pipeline Leak Detected',
-      message:
-        leak.reason ||
-        'Multiple sensor signals indicate a possible pipeline leak.',
-      zone,
-      device: deviceId,
-      icon: AlertTriangle
-    });
-  }
+  zones.forEach((zone, index) => {
+    const condition = zone?.condition || {};
+    const leak = zone?.leak || {};
+    const quality = zone?.water_quality || {};
+    const risk = zone?.risk || {};
 
-  // Sensor fault
-  if (condition.condition === 'SENSOR_FAULT') {
-    alerts.push({
-      id: 'sensor-fault',
-      type: 'HIGH',
-      title: 'Sensor Fault Detected',
-      message:
-        condition.reason ||
-        'One or more sensor readings appear physically invalid.',
-      zone,
-      device: deviceId,
-      icon: Activity
-    });
-  }
+    const zoneName = zone?.zone || `Zone_${index + 1}`;
+    const deviceId =
+      zone?.device_id || `ESP32_Node_${index + 1}`;
 
-  // Early anomaly
-  if (condition.condition === 'EARLY_ANOMALY') {
-    alerts.push({
-      id: 'anomaly',
-      type: 'MEDIUM',
-      title: 'Early Network Anomaly',
-      message:
-        condition.reason ||
-        'An abnormal trend has been detected and should be monitored.',
-      zone,
-      device: deviceId,
-      icon: Activity
-    });
-  }
+    // Leak
+    if (leak.leak_detected === true) {
+      alerts.push({
+        id: `${zoneName}-leak`,
+        type: 'CRITICAL',
+        title: `Pipeline Leak Detected — ${zoneName}`,
+        message:
+          leak.reason ||
+          'Multiple sensor signals indicate a possible pipeline leak.',
+        zone: zoneName,
+        device: deviceId,
+        icon: AlertTriangle
+      });
+    }
 
-  // Water quality
-  if (
-    quality.status === 'Poor' ||
-    (quality.issues && quality.issues.length > 0)
-  ) {
-    alerts.push({
-      id: 'water-quality',
-      type: 'MEDIUM',
-      title: 'Water Quality Warning',
-      message:
-        quality.issues?.join(', ') ||
-        'Water quality parameters require attention.',
-      zone,
-      device: deviceId,
-      icon: Droplets
-    });
-  }
+    // Sensor fault
+    if (condition.condition === 'SENSOR_FAULT') {
+      alerts.push({
+        id: `${zoneName}-sensor-fault`,
+        type: 'HIGH',
+        title: `Sensor Fault — ${zoneName}`,
+        message:
+          condition.reason ||
+          'One or more sensor readings appear physically invalid.',
+        zone: zoneName,
+        device: deviceId,
+        icon: Activity
+      });
+    }
+
+    // Early anomaly
+    if (condition.condition === 'EARLY_ANOMALY') {
+      alerts.push({
+        id: `${zoneName}-anomaly`,
+        type: 'MEDIUM',
+        title: `Early Network Anomaly — ${zoneName}`,
+        message:
+          condition.reason ||
+          'An abnormal trend has been detected and should be monitored.',
+        zone: zoneName,
+        device: deviceId,
+        icon: Activity
+      });
+    }
+
+    // Poor water quality
+    if (
+      quality.status === 'Poor' ||
+      quality.status === 'POOR' ||
+      (quality.issues && quality.issues.length > 0)
+    ) {
+      alerts.push({
+        id: `${zoneName}-water-quality`,
+        type: 'MEDIUM',
+        title: `Water Quality Warning — ${zoneName}`,
+        message:
+          quality.issues?.join(', ') ||
+          'Water quality parameters require attention.',
+        zone: zoneName,
+        device: deviceId,
+        icon: Droplets
+      });
+    }
+
+    // Risk
+    const riskScore = Number(risk.score);
+
+    if (Number.isFinite(riskScore) && riskScore > 0) {
+      alerts.push({
+        id: `${zoneName}-risk`,
+        type: riskScore >= 70 ? 'CRITICAL' : 'HIGH',
+        title: `Network Risk — ${zoneName}`,
+        message: `Risk score is ${riskScore}/100.`,
+        zone: zoneName,
+        device: deviceId,
+        icon: AlertTriangle
+      });
+    }
+  });
+
+  const highestRisk = zones.reduce(
+    (highest, zone) =>
+      Math.max(
+        highest,
+        Number(zone?.risk?.score) || 0
+      ),
+    0
+  );
 
   const typeClass = (type) => {
     if (type === 'CRITICAL') {
@@ -183,11 +213,11 @@ export default function Alerts() {
         <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
 
           <p className="text-sm text-gray-400">
-            Network Risk
+            Highest Network Risk
           </p>
 
           <p className="text-3xl font-bold mt-2 text-warningOrange">
-            {risk.score ?? 0}
+            {highestRisk}
             <span className="text-sm text-gray-500">
               /100
             </span>
@@ -198,11 +228,11 @@ export default function Alerts() {
         <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
 
           <p className="text-sm text-gray-400">
-            Current Condition
+            Monitored Zones
           </p>
 
-          <p className="text-xl font-bold mt-2">
-            {condition.condition || 'NORMAL'}
+          <p className="text-3xl font-bold mt-2">
+            {zones.length}
           </p>
 
         </div>

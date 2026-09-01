@@ -11,7 +11,7 @@ export default function LeakDetection() {
       const sensors = await fetchLatestSensorData();
 
       setAnalysis(analytics);
-      setSensorData(sensors);
+      setSensorData(sensors?.zones?.[0] || null);
     };
 
     getData();
@@ -35,8 +35,8 @@ export default function LeakDetection() {
   const risk = analysis.risk || {};
   const condition = analysis.condition || {};
 
-  const leakDetected = leak.leak_detected;
-
+  const leakDetected = leak.leak_detected === true;
+  const isAnomaly = condition.condition === 'EARLY_ANOMALY';
   return (
     <div className="p-6 space-y-6">
 

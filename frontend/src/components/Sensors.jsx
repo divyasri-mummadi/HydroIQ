@@ -9,10 +9,10 @@ export default function Sensors() {
     const getData = async () => {
       const data = await fetchLatestSensorData();
 
-      if (data) {
-        setSensorData(data);
-        setLastUpdated(new Date());
-      }
+     if (data) {
+  setSensorData(data?.zones?.[0] || null);
+  setLastUpdated(new Date());
+}
     };
 
     getData();

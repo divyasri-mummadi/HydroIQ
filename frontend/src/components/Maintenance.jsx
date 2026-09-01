@@ -1,27 +1,47 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
-import { fetchLatestAnalytics } from '../api';
+import {
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  ShieldAlert,
+  Activity,
+  Wrench,
+  Users,
+  Droplets,
+  Zap,
+  ArrowUpRight,
+  Clock
+} from 'lucide-react';
+
+import {
+  fetchLatestAnalytics,
+  fetchLatestSensorData
+} from '../api';
 
 export default function Maintenance() {
   const [analysis, setAnalysis] = useState(null);
+  const [sensorData, setSensorData] = useState(null);
   const [dispatched, setDispatched] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const getAnalysis = async () => {
+  const getData = async () => {
     try {
-      const data = await fetchLatestAnalytics();
-      setAnalysis(data);
+      const analytics = await fetchLatestAnalytics();
+      const sensors = await fetchLatestSensorData();
+
+      setAnalysis(analytics);
+      setSensorData(sensors);
     } catch (error) {
-      console.error('Maintenance analytics error:', error);
+      console.error('Maintenance error:', error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    getAnalysis();
+    getData();
 
-    const interval = setInterval(getAnalysis, 3000);
+    const interval = setInterval(getData, 3000);
 
     return () => clearInterval(interval);
   }, []);
@@ -29,9 +49,19 @@ export default function Maintenance() {
   if (loading) {
     return (
       <div className="p-6">
-        <p className="text-gray-400">
-          Loading risk & maintenance data...
-        </p>
+        <div className="bg-cardBg rounded-2xl border border-gray-800 p-8">
+          <div className="flex items-center gap-3">
+            <Activity className="w-6 h-6 text-accentTeal animate-pulse" />
+            <div>
+              <p className="font-semibold">
+                Loading risk intelligence...
+              </p>
+              <p className="text-sm text-gray-500 mt-1">
+                Analyzing network conditions
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -39,43 +69,231 @@ export default function Maintenance() {
   if (!analysis) {
     return (
       <div className="p-6">
-        <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
-          <p className="text-warningOrange">
-            Unable to retrieve maintenance analytics.
+        <div className="bg-cardBg rounded-2xl border border-gray-800 p-6">
+          <AlertCircle className="text-warningOrange mb-3" />
+
+          <p className="font-semibold">
+            Unable to retrieve risk analytics.
+          </p>
+
+          <p className="text-sm text-gray-500 mt-1">
+            Make sure the HydroIQ backend is running.
           </p>
         </div>
       </div>
     );
   }
 
-  const risk = analysis.risk || {};
-  const leak = analysis.leak || {};
-  const condition = analysis.condition || {};
-  const sensorHealth = analysis.sensor_health || {};
+  /* ================================
+     BACKEND DATA
+  ================================= */
 
-  const deviceId = analysis.device_id || 'ESP32_Node_1';
-  const zone = analysis.zone || 'Zone_A';
+  const risk =
+    typeof analysis.risk === 'object' && analysis.risk !== null
+      ? analysis.risk
+      : {};
 
-  const riskScore = risk.score ?? 0;
-  const riskLevel = risk.level || 'Low';
+  const leak =
+    typeof analysis.leak === 'object' && analysis.leak !== null
+      ? analysis.leak
+      : {};
 
-  const riskClass =
-    riskLevel === 'High'
-      ? 'text-red-400'
-      : riskLevel === 'Medium'
-      ? 'text-warningOrange'
-      : 'text-accentTeal';
+  const condition =
+    typeof analysis.condition === 'object' &&
+    analysis.condition !== null
+      ? analysis.condition
+      : {};
 
-  // Build issue description from the backend analytics
+  const currentSensor =
+    sensorData?.zones?.[0] ||
+    sensorData ||
+    {};
+
+  const deviceId =
+    analysis.device_id ||
+    currentSensor.device_id ||
+    'ESP32_Node_1';
+
+  const zone =
+    analysis.zone ||
+    currentSensor.zone ||
+    'Zone_A';
+
+  /* ================================
+     IMPORTANT:
+     condition is an OBJECT.
+     We extract the actual text.
+  ================================= */
+
+  const conditionName =
+    typeof condition.condition === 'string'
+      ? condition.condition
+      : 'NORMAL';
+
+  const severity =
+    typeof condition.severity === 'string'
+      ? condition.severity
+      : 'LOW';
+
+  const conditionReason =
+    typeof condition.reason === 'string'
+      ? condition.reason
+      : '';
+
+  const leakDetected =
+    leak.leak_detected === true;
+
+  const leakReason =
+    typeof leak.reason === 'string'
+      ? leak.reason
+      : '';
+
+  /* ================================
+     RISK
+  ================================= */
+
+  const riskScore = Number(risk.score ?? 0);
+
+  const riskLevel =
+    typeof risk.level === 'string'
+      ? risk.level
+      : riskScore >= 70
+      ? 'High'
+      : riskScore >= 40
+      ? 'Medium'
+      : 'Low';
+
+  let riskStyle;
+
+  if (riskScore >= 70) {
+    riskStyle = {
+      text: 'text-red-400',
+      bg: 'bg-red-500/10',
+      border: 'border-red-500/30',
+      bar: 'bg-red-400'
+    };
+  } else if (riskScore >= 40) {
+    riskStyle = {
+      text: 'text-warningOrange',
+      bg: 'bg-orange-500/10',
+      border: 'border-orange-500/30',
+      bar: 'bg-orange-400'
+    };
+  } else {
+    riskStyle = {
+      text: 'text-accentTeal',
+      bg: 'bg-accentTeal/10',
+      border: 'border-accentTeal/30',
+      bar: 'bg-accentTeal'
+    };
+  }
+
+  /* ================================
+     SENSOR HEALTH
+  ================================= */
+
+  const sensorValues = [
+    currentSensor.pressure,
+    currentSensor.flow,
+    currentSensor.acoustic,
+    currentSensor.ph,
+    currentSensor.tds,
+    currentSensor.turbidity
+  ];
+
+  const validSensors = sensorValues.filter(
+    value =>
+      value !== null &&
+      value !== undefined &&
+      value !== '' &&
+      !Number.isNaN(Number(value))
+  ).length;
+
+  const sensorHealth = Math.round(
+    (validSensors / sensorValues.length) * 100
+  );
+
+  /* ================================
+     ISSUE
+  ================================= */
+
   let issue = 'Network operating normally.';
 
-  if (leak.leak_detected) {
-    issue = 'Confirmed pipeline leak';
-  } else if (condition.condition === 'SENSOR_FAULT') {
-    issue = 'Sensor fault detected';
-  } else if (condition.condition === 'EARLY_ANOMALY') {
-    issue = 'Early network anomaly';
+  if (leakDetected) {
+    issue =
+      leakReason ||
+      'Confirmed pipeline leak';
+  } else if (conditionName === 'SENSOR_FAULT') {
+    issue =
+      conditionReason ||
+      'Sensor fault detected';
+  } else if (conditionName === 'EARLY_ANOMALY') {
+    issue =
+      conditionReason ||
+      'Early network anomaly';
   }
+
+  /* ================================
+     ACTION
+  ================================= */
+
+  let recommendedAction =
+    'Continue routine monitoring.';
+
+  if (leakDetected) {
+    recommendedAction =
+      'Inspect affected zone immediately.';
+  } else if (conditionName === 'SENSOR_FAULT') {
+    recommendedAction =
+      'Inspect or recalibrate sensor.';
+  } else if (conditionName === 'EARLY_ANOMALY') {
+    recommendedAction =
+      'Continue close monitoring for deterioration.';
+  }
+
+  /* ================================
+     PRIORITY
+  ================================= */
+
+  const priority =
+    riskScore >= 70
+      ? 'P1'
+      : riskScore >= 40
+      ? 'P2'
+      : conditionName === 'EARLY_ANOMALY'
+      ? 'P3'
+      : 'P4';
+
+  /* ================================
+     ZONES
+  ================================= */
+
+  let zones = [];
+
+  if (
+    Array.isArray(analysis.zones) &&
+    analysis.zones.length > 0
+  ) {
+    zones = analysis.zones;
+  } else if (
+    Array.isArray(sensorData?.zones) &&
+    sensorData.zones.length > 0
+  ) {
+    zones = sensorData.zones;
+  } else {
+    zones = [
+      {
+        device_id: deviceId,
+        zone: zone,
+        risk_score: riskScore,
+        condition: conditionName
+      }
+    ];
+  }
+
+  /* ================================
+     DISPATCH
+  ================================= */
 
   const handleDispatch = () => {
     setDispatched(true);
@@ -84,144 +302,520 @@ export default function Maintenance() {
   return (
     <div className="p-6 space-y-6">
 
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold">
-            Risk & Maintenance Prioritization
-          </h2>
+      {/* HEADER */}
 
-          <p className="text-sm text-gray-400 mt-1">
-            Prioritize maintenance using live HydroIQ risk analysis
-          </p>
+      <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
+
+        <div className="flex items-center gap-3">
+
+          <div className="p-3 rounded-xl bg-accentTeal/10 border border-accentTeal/20">
+            <ShieldAlert className="w-7 h-7 text-accentTeal" />
+          </div>
+
+          <div>
+
+            <h2 className="text-3xl font-bold">
+              Risk & Maintenance
+            </h2>
+
+            <p className="text-sm text-gray-400 mt-1">
+              Intelligent maintenance prioritization using live HydroIQ risk analysis
+            </p>
+
+          </div>
+
         </div>
 
         <button
-          onClick={getAnalysis}
-          className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition"
+          onClick={getData}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 rounded-xl text-sm transition border border-gray-700"
         >
           <RefreshCw className="w-4 h-4" />
-          Refresh
+          Refresh Analysis
         </button>
+
       </div>
 
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* WRS Queue */}
-        <div className="lg:col-span-2 bg-cardBg p-5 rounded-xl border border-gray-800">
+      {/* TOP CARDS */}
 
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-md font-semibold">
-              Water Risk Score (WRS) Queue
-            </h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
 
-            <span className={`font-bold ${riskClass}`}>
-              {riskLevel} Risk
-            </span>
+        {/* RISK */}
+
+        <div
+          className={`rounded-2xl border ${riskStyle.border} ${riskStyle.bg} p-5`}
+        >
+
+          <div className="flex justify-between">
+
+            <div>
+
+              <p className="text-xs text-gray-500 uppercase tracking-wide">
+                Water Risk Score
+              </p>
+
+              <p className={`text-4xl font-bold mt-2 ${riskStyle.text}`}>
+                {riskScore}
+                <span className="text-sm text-gray-500">
+                  /100
+                </span>
+              </p>
+
+            </div>
+
+            <ShieldAlert
+              className={`w-6 h-6 ${riskStyle.text}`}
+            />
+
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+          <div className="mt-4 h-2 bg-gray-800 rounded-full overflow-hidden">
 
-              <thead className="bg-gray-800/50 text-gray-400 text-xs">
-                <tr>
-                  <th className="p-3">Device</th>
-                  <th className="p-3">Zone</th>
-                  <th className="p-3">WRS</th>
-                  <th className="p-3">Issue</th>
-                  <th className="p-3">Action</th>
+            <div
+              className={`h-full rounded-full ${riskStyle.bar}`}
+              style={{
+                width: `${Math.min(100, riskScore)}%`
+              }}
+            />
+
+          </div>
+
+          <p className={`text-xs font-semibold mt-3 ${riskStyle.text}`}>
+            {riskLevel} Risk
+          </p>
+
+        </div>
+
+
+        {/* SENSOR HEALTH */}
+
+        <div className="bg-cardBg rounded-2xl border border-gray-800 p-5">
+
+          <div className="flex justify-between">
+
+            <div>
+
+              <p className="text-xs text-gray-500 uppercase">
+                Sensor Health
+              </p>
+
+              <p className="text-4xl font-bold text-accentTeal mt-2">
+                {sensorHealth}
+                <span className="text-sm text-gray-500">
+                  %
+                </span>
+              </p>
+
+            </div>
+
+            <Activity className="w-6 h-6 text-accentTeal" />
+
+          </div>
+
+          <p className="text-xs text-gray-500 mt-4">
+            {validSensors} / {sensorValues.length} sensors reporting
+          </p>
+
+        </div>
+
+
+        {/* POPULATION */}
+
+        <div className="bg-cardBg rounded-2xl border border-gray-800 p-5">
+
+          <div className="flex justify-between">
+
+            <div>
+
+              <p className="text-xs text-gray-500 uppercase">
+                Population Coverage
+              </p>
+
+              <p className="text-4xl font-bold mt-2">
+                1,200
+              </p>
+
+            </div>
+
+            <Users className="w-6 h-6 text-accentBlue" />
+
+          </div>
+
+          <p className="text-xs text-gray-500 mt-4">
+            Residents monitored
+          </p>
+
+        </div>
+
+
+        {/* PRIORITY */}
+
+        <div className="bg-cardBg rounded-2xl border border-gray-800 p-5">
+
+          <div className="flex justify-between">
+
+            <div>
+
+              <p className="text-xs text-gray-500 uppercase">
+                Maintenance Priority
+              </p>
+
+              <p className={`text-4xl font-bold mt-2 ${riskStyle.text}`}>
+                {priority}
+              </p>
+
+            </div>
+
+            <Wrench
+              className={`w-6 h-6 ${riskStyle.text}`}
+            />
+
+          </div>
+
+          <p className="text-xs text-gray-500 mt-4">
+            {recommendedAction}
+          </p>
+
+        </div>
+
+      </div>
+
+
+      {/* MAIN AREA */}
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+
+        {/* QUEUE */}
+
+        <div className="xl:col-span-2 bg-cardBg rounded-2xl border border-gray-800 overflow-hidden">
+
+          <div className="p-5 border-b border-gray-800">
+
+            <div className="flex justify-between">
+
+              <div>
+
+                <h3 className="text-lg font-bold">
+                  Maintenance Priority Queue
+                </h3>
+
+                <p className="text-xs text-gray-500 mt-1">
+                  Zones ranked by Water Risk Score
+                </p>
+
+              </div>
+
+              <span className={`font-bold ${riskStyle.text}`}>
+                {riskLevel} Risk
+              </span>
+
+            </div>
+
+          </div>
+
+
+          <div className="overflow-x-auto">
+
+            <table className="w-full text-left">
+
+              <thead className="bg-gray-900/60">
+
+                <tr className="text-xs text-gray-500 uppercase">
+
+                  <th className="px-5 py-3">
+                    Priority
+                  </th>
+
+                  <th className="px-5 py-3">
+                    Zone
+                  </th>
+
+                  <th className="px-5 py-3">
+                    WRS
+                  </th>
+
+                  <th className="px-5 py-3">
+                    Condition
+                  </th>
+
+                  <th className="px-5 py-3">
+                    Issue
+                  </th>
+
+                  <th className="px-5 py-3">
+                    Action
+                  </th>
+
                 </tr>
+
               </thead>
+
 
               <tbody className="divide-y divide-gray-800">
 
-                <tr>
+                {zones.map((item, index) => {
 
-                  <td className="p-3 font-mono text-accentBlue font-bold">
-                    {deviceId}
-                  </td>
+                  const itemRisk = Number(
+                    item?.risk_score ??
+                    item?.wrs ??
+                    item?.risk?.score ??
+                    riskScore
+                  );
 
-                  <td className="p-3">
-                    {zone}
-                  </td>
+                  /*
+                   * VERY IMPORTANT:
+                   * Never render item.condition directly
+                   * because it may be an object.
+                   */
 
-                  <td className={`p-3 font-bold ${riskClass}`}>
-                    {riskScore}
-                  </td>
+                  let itemCondition = 'NORMAL';
 
-                  <td className="p-3">
-                    {issue}
-                  </td>
+                  if (typeof item?.condition === 'string') {
+                    itemCondition = item.condition;
+                  } else if (
+                    typeof item?.condition?.condition === 'string'
+                  ) {
+                    itemCondition =
+                      item.condition.condition;
+                  }
 
-                  <td className="p-3">
+                  const itemPriority =
+                    itemRisk >= 70
+                      ? 'P1'
+                      : itemRisk >= 40
+                      ? 'P2'
+                      : itemCondition === 'EARLY_ANOMALY'
+                      ? 'P3'
+                      : 'P4';
 
-                    {dispatched ? (
+                  const itemRiskClass =
+                    itemRisk >= 70
+                      ? 'text-red-400'
+                      : itemRisk >= 40
+                      ? 'text-warningOrange'
+                      : 'text-accentTeal';
 
-                      <span className="flex items-center gap-1 text-accentTeal text-xs font-semibold">
-                        <CheckCircle2 className="w-4 h-4" />
-                        Dispatched
-                      </span>
+                  let itemIssue =
+                    'Network operating normally.';
 
-                    ) : (
+                  if (itemCondition === 'EARLY_ANOMALY') {
+                    itemIssue =
+                      'Early network anomaly';
+                  }
 
-                      <button
-                        onClick={handleDispatch}
-                        className="px-3 py-1 bg-accentBlue hover:bg-blue-600 font-semibold rounded text-xs transition"
-                      >
-                        Dispatch Crew
-                      </button>
+                  if (itemCondition === 'SENSOR_FAULT') {
+                    itemIssue =
+                      'Sensor fault detected';
+                  }
 
-                    )}
+                  if (leakDetected) {
+                    itemIssue =
+                      'Confirmed pipeline leak';
+                  }
 
-                  </td>
+                  return (
+                    <tr
+                      key={`${item?.zone || 'zone'}-${index}`}
+                      className="hover:bg-gray-900/40"
+                    >
 
-                </tr>
+                      <td className="px-5 py-4">
+
+                        <span
+                          className={`px-2 py-1 rounded-lg text-xs font-bold ${itemRiskClass} bg-gray-900`}
+                        >
+                          {itemPriority}
+                        </span>
+
+                      </td>
+
+
+                      <td className="px-5 py-4">
+
+                        <p className="font-semibold">
+                          {typeof item?.zone === 'string'
+                            ? item.zone
+                            : zone}
+                        </p>
+
+                        <p className="text-xs text-gray-500 mt-1">
+                          {typeof item?.device_id === 'string'
+                            ? item.device_id
+                            : deviceId}
+                        </p>
+
+                      </td>
+
+
+                      <td className="px-5 py-4">
+
+                        <span
+                          className={`text-xl font-bold ${itemRiskClass}`}
+                        >
+                          {itemRisk}
+                        </span>
+
+                      </td>
+
+
+                      <td className="px-5 py-4">
+
+                        <span className="text-xs font-semibold">
+                          {itemCondition}
+                        </span>
+
+                      </td>
+
+
+                      <td className="px-5 py-4">
+
+                        <span className="text-xs text-gray-400">
+                          {itemIssue}
+                        </span>
+
+                      </td>
+
+
+                      <td className="px-5 py-4">
+
+                        {index === 0 && !dispatched ? (
+
+                          <button
+                            onClick={handleDispatch}
+                            className="px-3 py-2 rounded-lg bg-accentBlue hover:bg-blue-600 text-white text-xs font-semibold"
+                          >
+                            Dispatch
+                          </button>
+
+                        ) : index === 0 && dispatched ? (
+
+                          <span className="flex items-center gap-1 text-accentTeal text-xs font-semibold">
+
+                            <CheckCircle2 className="w-4 h-4" />
+
+                            Dispatched
+
+                          </span>
+
+                        ) : (
+
+                          <span className="text-xs text-gray-500">
+                            Monitor
+                          </span>
+
+                        )}
+
+                      </td>
+
+                    </tr>
+                  );
+                })}
 
               </tbody>
 
             </table>
+
           </div>
+
         </div>
 
-        {/* AI Decision Logic */}
-        <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
 
-          <div className="flex items-center gap-2 mb-3">
+        {/* AI LOGIC */}
 
-            <AlertCircle className="text-accentTeal w-5 h-5" />
+        <div className="bg-cardBg rounded-2xl border border-gray-800 p-5">
 
-            <h3 className="text-md font-semibold">
-              AI Decision Logic
-            </h3>
+          <div className="flex items-center gap-3 mb-5">
+
+            <div className="p-2 rounded-lg bg-accentTeal/10">
+
+              <Zap className="w-5 h-5 text-accentTeal" />
+
+            </div>
+
+            <div>
+
+              <h3 className="font-bold">
+                AI Decision Logic
+              </h3>
+
+              <p className="text-xs text-gray-500">
+                Why HydroIQ ranked this zone
+              </p>
+
+            </div>
 
           </div>
 
-          <div className="text-xs text-gray-300 leading-relaxed bg-darkBg p-3 rounded-lg border border-gray-800">
 
-            <p>
-              <strong>Current condition:</strong>{' '}
-              {condition.condition || 'NORMAL'}
-            </p>
+          <div className="space-y-4">
 
-            <p className="mt-2">
-              <strong>Severity:</strong>{' '}
-              {condition.severity || 'LOW'}
-            </p>
+            <div className="p-4 rounded-xl bg-darkBg border border-gray-800">
 
-            {condition.reason && (
-              <p className="mt-2">
-                <strong>Reason:</strong>{' '}
-                {condition.reason}
+              <p className="text-xs text-gray-500 uppercase">
+                Current Condition
               </p>
-            )}
 
-            {leak.reason && (
-              <p className="mt-2">
-                <strong>Leak evidence:</strong>{' '}
-                {leak.reason}
+              <p className={`font-bold mt-1 ${riskStyle.text}`}>
+                {conditionName}
               </p>
-            )}
+
+            </div>
+
+
+            <div className="p-4 rounded-xl bg-darkBg border border-gray-800">
+
+              <p className="text-xs text-gray-500 uppercase">
+                Severity
+              </p>
+
+              <p className="font-bold mt-1">
+                {severity}
+              </p>
+
+            </div>
+
+
+            <div className="p-4 rounded-xl bg-darkBg border border-gray-800">
+
+              <p className="text-xs text-gray-500 uppercase">
+                Evidence
+              </p>
+
+              <p className="text-sm text-gray-300 mt-2">
+                {conditionReason ||
+                  leakReason ||
+                  issue}
+              </p>
+
+            </div>
+
+
+            <div
+              className={`p-4 rounded-xl border ${riskStyle.border} ${riskStyle.bg}`}
+            >
+
+              <div className="flex items-start gap-3">
+
+                <ArrowUpRight
+                  className={`w-5 h-5 ${riskStyle.text}`}
+                />
+
+                <div>
+
+                  <p className={`font-semibold ${riskStyle.text}`}>
+                    Recommended Decision
+                  </p>
+
+                  <p className="text-sm text-gray-300 mt-1">
+                    {recommendedAction}
+                  </p>
+
+                </div>
+
+              </div>
+
+            </div>
 
           </div>
 
@@ -229,58 +823,180 @@ export default function Maintenance() {
 
       </div>
 
-      {/* Maintenance Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-        <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
+      {/* BOTTOM */}
 
-          <p className="text-sm text-gray-400">
-            Risk Score
-          </p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-          <p className={`text-3xl font-bold mt-2 ${riskClass}`}>
-            {riskScore}
-            <span className="text-sm text-gray-500">
-              /100
-            </span>
-          </p>
+        <div className="bg-cardBg rounded-2xl border border-gray-800 p-5">
+
+          <div className="flex items-center gap-3 mb-5">
+
+            <ShieldAlert className="w-6 h-6 text-accentTeal" />
+
+            <div>
+
+              <h3 className="font-bold">
+                Network Risk Assessment
+              </h3>
+
+              <p className="text-xs text-gray-500">
+                Current operational health
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div className="space-y-5">
+
+            <div>
+
+              <div className="flex justify-between text-xs mb-2">
+
+                <span className="text-gray-400">
+                  Water Risk Score
+                </span>
+
+                <span className={riskStyle.text}>
+                  {riskScore}/100
+                </span>
+
+              </div>
+
+              <div className="h-2 bg-gray-800 rounded-full">
+
+                <div
+                  className={`h-full rounded-full ${riskStyle.bar}`}
+                  style={{
+                    width: `${Math.min(100, riskScore)}%`
+                  }}
+                />
+
+              </div>
+
+            </div>
+
+
+            <div>
+
+              <div className="flex justify-between text-xs mb-2">
+
+                <span className="text-gray-400">
+                  Sensor Availability
+                </span>
+
+                <span className="text-accentTeal">
+                  {sensorHealth}%
+                </span>
+
+              </div>
+
+              <div className="h-2 bg-gray-800 rounded-full">
+
+                <div
+                  className="h-full rounded-full bg-accentTeal"
+                  style={{
+                    width: `${sensorHealth}%`
+                  }}
+                />
+
+              </div>
+
+            </div>
+
+          </div>
 
         </div>
 
-        <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
 
-          <p className="text-sm text-gray-400">
-            Sensor Health
+        <div
+          className={`rounded-2xl border ${riskStyle.border} ${riskStyle.bg} p-5`}
+        >
+
+          <div className="flex items-center gap-3 mb-4">
+
+            <Wrench
+              className={`w-6 h-6 ${riskStyle.text}`}
+            />
+
+            <div>
+
+              <h3 className="font-bold">
+                Recommended Maintenance
+              </h3>
+
+              <p className="text-xs text-gray-500">
+                AI-generated recommendation
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <p className="text-lg font-semibold">
+            {recommendedAction}
           </p>
 
-          <p className="text-3xl font-bold mt-2 text-accentTeal">
-            {sensorHealth.overall_score ?? '--'}
-            <span className="text-sm text-gray-500">
-              %
-            </span>
-          </p>
+
+          <div className="flex flex-wrap gap-3 mt-5">
+
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900/50 border border-gray-800">
+
+              <Clock className="w-4 h-4 text-gray-500" />
+
+              <span className="text-xs text-gray-400">
+                Live analysis
+              </span>
+
+            </div>
+
+
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900/50 border border-gray-800">
+
+              <Droplets className="w-4 h-4 text-accentBlue" />
+
+              <span className="text-xs text-gray-400">
+                {zone}
+              </span>
+
+            </div>
+
+
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900/50 border border-gray-800">
+
+              <Users className="w-4 h-4 text-accentTeal" />
+
+              <span className="text-xs text-gray-400">
+                1,200 residents
+              </span>
+
+            </div>
+
+          </div>
 
         </div>
 
-        <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
+      </div>
 
-          <p className="text-sm text-gray-400">
-            Recommended Action
-          </p>
 
-          <p className="text-sm font-semibold mt-2">
+      {/* FOOTER */}
 
-            {leak.leak_detected
-              ? 'Inspect affected zone immediately.'
-              : condition.condition === 'SENSOR_FAULT'
-              ? 'Inspect or recalibrate sensor.'
-              : condition.condition === 'EARLY_ANOMALY'
-              ? 'Continue monitoring for deterioration.'
-              : 'Continue routine monitoring.'}
+      <div className="flex justify-between text-xs text-gray-500 px-1">
 
-          </p>
+        <span>
+          HydroIQ Decision Intelligence
+        </span>
 
-        </div>
+        <span className="flex items-center gap-2">
+
+          <span className="w-2 h-2 rounded-full bg-accentTeal animate-pulse" />
+
+          Live analysis • Refreshing every 3 seconds
+
+        </span>
 
       </div>
 

@@ -1,16 +1,22 @@
 import React from 'react';
-import { Activity, Droplet, Shield, Cpu, AlertTriangle, MapPin, Bell } from 'lucide-react';
+import { Activity, Droplet, Shield, Cpu, AlertTriangle, MapPin, Bell, Brain } from 'lucide-react';
 
 export default function Sidebar({ activeTab, setActiveTab }) {
-  const menuItems = [
-    { id: 'overview', label: 'Overview', icon: Activity },
-    { id: 'leak-detection', label: 'Leak Detection', icon: AlertTriangle },
-    {id: 'leak-localization', label: 'Leak Localization', icon: MapPin }, 
-    {id: 'alerts', label: 'Alerts', icon: Bell },
-    { id: 'maintenance', label: 'Risk & Maintenance', icon: Shield },
-    { id: 'sensors', label: 'Sensors & Devices', icon: Cpu },
-    
-  ];
+ const menuItems = [
+  { id: 'overview', label: 'Overview', icon: Activity },
+  { id: 'network-map', label: 'Network Map', icon: MapPin },
+  { id: 'leak-detection', label: 'Leak Detection', icon: AlertTriangle },
+  { id: 'leak-localization', label: 'Leak Localization', icon: MapPin },
+  { id: 'water-quality', label: 'Water Quality', icon: Droplet },
+  { id: 'alerts', label: 'Alerts', icon: Bell },
+  { id: 'maintenance', label: 'Risk & Maintenance', icon: Shield },
+  { id: 'sensors', label: 'Sensors & Devices', icon: Cpu },
+  {
+  id: 'simulation',
+  label: 'Digital Twin',
+  icon: Brain
+},
+]; 
 
   return (
     <div className="w-64 bg-cardBg min-h-screen p-4 border-r border-gray-800">

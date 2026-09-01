@@ -6,6 +6,7 @@ import Maintenance from './components/Maintenance';
 import Sensors from './components/Sensors';
 import Alerts from './components/Alerts';
 import LeakLocalization from './components/LeakLocalization';
+import Simulation from './components/Simulation';
 
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -18,28 +19,27 @@ function App() {
         setActiveTab={setActiveTab}
       />
 
-      <main className="flex-1">
+      <main className="flex-1 min-w-0">
 
+        {/* OVERVIEW */}
         {activeTab === 'overview' && (
           <Overview />
         )}
 
-        {activeTab === 'maintenance' && (
-          <Maintenance />
+        {/* NETWORK MAP */}
+        {activeTab === 'network-map' && (
+          <div className="p-6">
+            <h2 className="text-2xl font-bold">
+              Network Map
+            </h2>
+
+            <p className="text-gray-400 mt-2">
+              Live pipeline network topology
+            </p>
+          </div>
         )}
 
-        {activeTab === 'sensors' && (
-          <Sensors />
-        )}
-
-        {activeTab === 'alerts' && (
-          <Alerts />
-        )}
-
-        {activeTab === 'leak-localization' && (
-          <LeakLocalization />
-        )}
-
+        {/* LEAK DETECTION */}
         {activeTab === 'leak-detection' && (
           <div className="p-6">
             <h2 className="text-2xl font-bold">
@@ -50,6 +50,44 @@ function App() {
               Multi-sensor pipeline leak analysis
             </p>
           </div>
+        )}
+
+        {/* LEAK LOCALIZATION */}
+        {activeTab === 'leak-localization' && (
+          <LeakLocalization />
+        )}
+
+        {/* WATER QUALITY */}
+        {activeTab === 'water-quality' && (
+          <div className="p-6">
+            <h2 className="text-2xl font-bold">
+              Water Quality
+            </h2>
+
+            <p className="text-gray-400 mt-2">
+              Water quality monitoring across the network
+            </p>
+          </div>
+        )}
+
+        {/* ALERTS */}
+        {activeTab === 'alerts' && (
+          <Alerts />
+        )}
+
+        {/* MAINTENANCE */}
+        {activeTab === 'maintenance' && (
+          <Maintenance />
+        )}
+
+        {/* SENSORS */}
+        {activeTab === 'sensors' && (
+          <Sensors />
+        )}
+
+        {/* DIGITAL TWIN */}
+        {activeTab === 'simulation' && (
+          <Simulation />
         )}
 
       </main>
