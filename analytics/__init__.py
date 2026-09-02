@@ -10,103 +10,98 @@ from .priority import calculate_priority
 def analyze_sensor_data(
     sensor_data,
     location_score=0,
-    critical_area=False
+    population=0,
+    facilities=None,
+    critical_area=False,
+    trend_score=0
 ):
+    if facilities is None:
+        facilities = []
 
-    # ============================================================
-    # 1. CLEAN SENSOR DATA
-    # ============================================================
+    raw_data = dict(sensor_data)
 
-    clean_data = filter_sensor_data(
-        sensor_data
+    filtered_data = filter_sensor_data(
+        raw_data
     )
-
-
-    # ============================================================
-    # 2. LEAK DETECTION
-    # ============================================================
 
     leak_result = detect_leak(
-        clean_data
+        raw_data
     )
-
-
-    # ============================================================
-    # 3. WATER QUALITY
-    # ============================================================
 
     quality_result = analyze_water_quality(
-        clean_data
+        raw_data
     )
-
-
-    # ============================================================
-    # 4. CONDITION CLASSIFICATION
-    # ============================================================
 
     condition_result = classify_condition(
-        clean_data,
+        raw_data,
         leak_result,
         quality_result
     )
-
-
-    # ============================================================
-    # 5. SENSOR HEALTH
-    # ============================================================
 
     health_result = calculate_sensor_health(
-        clean_data
+        raw_data
     )
-
-
-    # ============================================================
-    # 6. WATER RISK SCORE
-    #
-    # IMPORTANT:
-    # wrs.py now expects THREE arguments.
-    # ============================================================
 
     risk_result = calculate_risk_score(
-
-        clean_data,
-
         leak_result,
-
-        quality_result
-
+        quality_result,
+        sensor_health_result=health_result,
+        condition_result=condition_result,
+        sensor_data=raw_data,
+        population=population,
+        facilities=facilities,
+        critical_area=critical_area,
+        location_score=location_score,
+        trend_score=trend_score
     )
 
+    condition = condition_result.get(
+        "condition",
+        "NORMAL"
+    )
 
-    # ============================================================
-    # 7. PRIORITY
-    #
-    # Location only influences priority when there is already
-    # an actual problem.
-    # ============================================================
+    leak_detected = leak_result.get(
+        "leak_detected",
+        False
+    )
 
-    priority_result = calculate_priority({
+    quality_status = quality_result.get(
+        "status",
+        "Good"
+    )
 
-        "condition": condition_result,
+    has_problem = (
+        condition != "NORMAL"
+        or leak_detected
+        or quality_status in (
+            "Poor",
+            "Moderate",
+            "Fair"
+        )
+    )
 
-        "risk": risk_result,
+    if has_problem:
+        priority_result = calculate_priority(
+            {
+                "condition": condition_result,
+                "risk": risk_result,
+                "leak": leak_result
+            },
+            location_score=location_score
+        )
+    else:
+        priority_result = None
 
-        "leak": leak_result,
-
-        "location_score": location_score,
-
-        "critical_area": critical_area
-
-    })
-
-
-    # ============================================================
-    # 8. RETURN
-    # ============================================================
+    if priority_result is not None:
+        priority_result["population"] = population
+        priority_result["facilities"] = facilities
+        priority_result["critical_area"] = critical_area
+        priority_result["trend_score"] = trend_score
 
     return {
+        "sensor_data": raw_data,
 
-        "sensor_data": clean_data,
+        "filtered_sensor_data": filtered_data,
 
         "leak": leak_result,
 
@@ -118,6 +113,13 @@ def analyze_sensor_data(
 
         "risk": risk_result,
 
-        "priority": priority_result
+        "priority": priority_result,
 
+        "stage": condition,
+
+        "impact": {
+            "population": population,
+            "facilities": facilities,
+            "critical_area": critical_area
+        }
     }

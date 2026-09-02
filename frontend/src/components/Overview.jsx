@@ -452,6 +452,9 @@ export default function Overview() {
 
   const [zones, setZones] = useState([]);
 
+  const [selectedGraphZone, setSelectedGraphZone] =
+    useState('Zone_A');
+
   const [historyData, setHistoryData] =
     useState([]);
 
@@ -718,12 +721,15 @@ let analyticsZones =
   // ==========================================================
 
   const graphZone =
-    highestPriorityZone ||
+    zones.find(
+      (zone) => zone?.zone === selectedGraphZone
+    ) ||
     zones[0] ||
     null;
 
   const graphZoneName =
     graphZone?.zone ||
+    selectedGraphZone ||
     'Network';
 
 
@@ -1577,7 +1583,40 @@ let analyticsZones =
         </div>
 
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mt-6">
+        {/* ZONE SELECTOR */}
+
+        <div className="flex flex-wrap gap-2 mt-5 mb-6">
+
+          {['Zone_A', 'Zone_B', 'Zone_C', 'Zone_D'].map(
+            (zoneName) => (
+
+              <button
+                key={zoneName}
+                type="button"
+                onClick={() => setSelectedGraphZone(zoneName)}
+                className={`
+                  px-4 py-2
+                  rounded-lg
+                  border
+                  text-sm
+                  font-semibold
+                  transition
+                  ${
+                    selectedGraphZone === zoneName
+                      ? 'bg-accentTeal/15 border-accentTeal/50 text-accentTeal'
+                      : 'bg-gray-900/30 border-gray-800 text-gray-400 hover:text-gray-200 hover:border-gray-600'
+                  }
+                `}
+              >
+                {zoneName}
+              </button>
+
+            )
+          )}
+
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
 
 
           {/* ==================================================

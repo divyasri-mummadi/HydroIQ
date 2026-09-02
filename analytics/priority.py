@@ -1,364 +1,335 @@
-def calculate_priority(data):
-    """
-    HydroIQ Maintenance Priority Engine
+def calculate_priority(
+    analytics_result,
+    ml_result=None,
+    sensor_health=None,
+    location_score=0
+):
+    analytics_result = analytics_result or {}
+    ml_result = ml_result or {}
+    sensor_health = sensor_health or {}
 
-    Converts:
-        WRS + condition + leak + location
-        ↓
-        P1 / P2 / P3 / P4
-        ↓
-        Recommended maintenance action
-    """
+    condition_result = (
+        analytics_result.get("condition")
+        or {}
+    )
 
-    data = data or {}
+    risk = (
+        analytics_result.get("risk")
+        or {}
+    )
 
-    condition = data.get("condition") or {}
-    risk = data.get("risk") or {}
-    leak = data.get("leak") or {}
+    leak = (
+        analytics_result.get("leak")
+        or {}
+    )
 
-    # ============================================================
-    # BASIC INFORMATION
-    # ============================================================
-
-    condition_name = str(
-        condition.get("condition", "NORMAL")
+    condition = str(
+        condition_result.get(
+            "condition",
+            "NORMAL"
+        )
     ).upper()
 
     severity = str(
-        condition.get("severity", "LOW")
+        condition_result.get(
+            "severity",
+            "LOW"
+        )
     ).upper()
 
-    risk_score = float(
-        risk.get("score", 0) or 0
-    )
-
     leak_detected = bool(
-        leak.get("leak_detected", False)
+        leak.get(
+            "leak_detected",
+            False
+        )
     )
-
-    # ============================================================
-    # LOCATION / IMPACT
-    # ============================================================
-
-    location_score = float(
-        data.get("location_score", 0) or 0
-    )
-
-    critical_area = bool(
-        data.get("critical_area", False)
-    )
-
-    population = int(
-        data.get("population", 0) or 0
-    )
-
-    # ============================================================
-    # CHECK WHETHER A REAL PROBLEM EXISTS
-    # ============================================================
 
     problem_conditions = {
-        "LEAK",
         "EARLY_ANOMALY",
-        "SENSOR_FAULT",
+        "LEAK",
         "WATER_QUALITY",
+        "SENSOR_FAULT",
         "CRITICAL"
     }
 
-    problem_exists = (
-        leak_detected
-        or risk_score > 0
-        or condition_name in problem_conditions
+    has_problem = (
+        condition in problem_conditions
+        or leak_detected
     )
 
-    # ============================================================
-    # NORMAL NETWORK
-    # ============================================================
+    if not has_problem:
+        return None
 
-    if not problem_exists:
+    try:
+        wrs = float(
+            risk.get(
+                "score",
+                risk.get("wrs", 0)
+            ) or 0
+        )
+    except (TypeError, ValueError):
+        wrs = 0
 
-        return {
-            "priority": "P4",
-            "level": "LOW",
-            "score": 0,
-            "location_score": location_score,
-            "reason": "Network operating normally.",
-            "recommended_action": "Continue routine monitoring.",
-            "response_time": "Routine",
-            "dispatch_required": False
-        }
+    wrs = max(
+        0,
+        min(100, wrs)
+    )
 
-    # ============================================================
-    # START WITH WRS
-    #
-    # IMPORTANT:
-    # WRS remains the main risk signal.
-    # We are NOT changing your friend's WRS algorithm.
-    # ============================================================
+    prediction = str(
+        ml_result.get(
+            "prediction",
+            condition
+        )
+    ).upper()
 
-    score = risk_score
+    if prediction == "UNKNOWN":
+        prediction = condition
 
-    evidence = []
+    try:
+        confidence = float(
+            ml_result.get(
+                "confidence",
+                0
+            ) or 0
+        )
+    except (TypeError, ValueError):
+        confidence = 0
 
-    # ============================================================
-    # CONDITION WEIGHT
-    # ============================================================
+    confidence = max(
+        0,
+        min(1, confidence)
+    )
 
-    condition_weights = {
-        "LEAK": 25,
-        "CRITICAL": 25,
-        "SENSOR_FAULT": 15,
-        "WATER_QUALITY": 20,
-        "EARLY_ANOMALY": 10
+    severity_map = {
+        "NORMAL": 0,
+        "EARLY_ANOMALY": 45,
+        "SENSOR_FAULT": 55,
+        "WATER_QUALITY": 70,
+        "LEAK": 100,
+        "CRITICAL": 100
     }
 
-    condition_weight = condition_weights.get(
-        condition_name,
+    condition_score = severity_map.get(
+        condition,
         0
     )
 
-    score += condition_weight
+    ml_score = severity_map.get(
+        prediction,
+        0
+    )
 
-    if condition_name != "NORMAL":
-        evidence.append(condition_name)
+    effective_condition_score = max(
+        condition_score,
+        ml_score
+    )
 
-    # ============================================================
-    # SEVERITY WEIGHT
-    # ============================================================
+    try:
+        health_score = float(
+            sensor_health.get(
+                "overall_score",
+                100
+            ) or 100
+        )
+    except (TypeError, ValueError):
+        health_score = 100
 
-    severity_weights = {
-        "CRITICAL": 20,
-        "HIGH": 15,
-        "MEDIUM": 8,
-        "LOW": 3
+    health_score = max(
+        0,
+        min(100, health_score)
+    )
+
+    try:
+        location_score = float(
+            location_score or 0
+        )
+    except (TypeError, ValueError):
+        location_score = 0
+
+    location_score = max(
+        0,
+        min(100, location_score)
+    )
+
+    severity_scores = {
+        "LOW": 20,
+        "MEDIUM": 50,
+        "HIGH": 80,
+        "CRITICAL": 100
     }
 
-    severity_weight = severity_weights.get(
+    severity_score = severity_scores.get(
         severity,
-        0
+        20
     )
 
-    score += severity_weight
+    final_severity = max(
+        severity_score,
+        effective_condition_score
+    )
 
-    # ============================================================
-    # CONFIRMED LEAK
-    # ============================================================
+    priority_score = (
+        (wrs * 0.50)
+        +
+        (final_severity * 0.25)
+        +
+        (location_score * 0.15)
+        +
+        (health_score * 0.10)
+    )
 
-    if leak_detected:
-
-        score += 20
-
-        evidence.append(
-            "Confirmed leak detection"
+    if condition == "LEAK" or leak_detected:
+        priority_score = max(
+            priority_score,
+            70
         )
 
-    # ============================================================
-    # LOCATION IMPACT
-    #
-    # Location only increases priority when a problem exists.
-    # ============================================================
+    if condition == "CRITICAL":
+        priority_score = max(
+            priority_score,
+            85
+        )
 
-    score += location_score
+    priority_score = max(
+        0,
+        min(100, priority_score)
+    )
+
+    priority_score = round(
+        priority_score,
+        2
+    )
+
+    if priority_score >= 80:
+        level = "CRITICAL"
+        priority_code = "P1"
+
+    elif priority_score >= 60:
+        level = "HIGH"
+        priority_code = "P2"
+
+    elif priority_score >= 35:
+        level = "MEDIUM"
+        priority_code = "P3"
+
+    else:
+        level = "LOW"
+        priority_code = "P4"
+
+    if condition in (
+        "LEAK",
+        "CRITICAL"
+    ):
+
+        if level == "CRITICAL":
+            action = (
+                "Immediately isolate the affected zone "
+                "and dispatch an emergency repair crew."
+            )
+            response_time = "Immediate"
+            dispatch_required = True
+
+        elif level == "HIGH":
+            action = (
+                "Dispatch an inspection team urgently "
+                "to investigate the affected network segment."
+            )
+            response_time = "Within 1 hour"
+            dispatch_required = True
+
+        else:
+            action = (
+                "Inspect the network segment for "
+                "possible pipeline failure."
+            )
+            response_time = "Within 24 hours"
+            dispatch_required = False
+
+    elif condition == "WATER_QUALITY":
+
+        action = (
+            "Verify water-quality readings and inspect "
+            "the affected zone before restoring normal operation."
+        )
+        response_time = "Within 24 hours"
+        dispatch_required = True
+
+    elif condition == "EARLY_ANOMALY":
+
+        action = (
+            "Monitor the developing anomaly and schedule "
+            "a preventive field inspection."
+        )
+        response_time = "Within 24 hours"
+        dispatch_required = False
+
+    elif condition == "SENSOR_FAULT":
+
+        action = (
+            "Inspect or recalibrate the affected sensor "
+            "and validate readings against nearby nodes."
+        )
+        response_time = "Within 24 hours"
+        dispatch_required = False
+
+    else:
+
+        action = "Continue normal monitoring."
+        response_time = "Routine"
+        dispatch_required = False
+
+    evidence = [
+        f"WRS risk score: {round(wrs, 1)}/100",
+        f"Detected condition: {condition}",
+        f"Sensor health: {round(health_score, 1)}%"
+    ]
+
+    if prediction not in (
+        "NORMAL",
+        "UNKNOWN"
+    ):
+        evidence.append(
+            f"ML prediction: {prediction}"
+        )
+
+    if confidence > 0:
+        evidence.append(
+            f"ML confidence: {round(confidence * 100)}%"
+        )
 
     if location_score > 0:
-
         evidence.append(
-            "Location impact"
+            f"Location importance: {round(location_score, 1)}/100"
         )
-
-    # ============================================================
-    # CRITICAL INFRASTRUCTURE
-    # ============================================================
-
-    if critical_area:
-
-        score += 10
-
-        evidence.append(
-            "Critical infrastructure"
-        )
-
-    # ============================================================
-    # POPULATION IMPACT
-    #
-    # Large populations should increase response urgency.
-    # ============================================================
-
-    if population >= 5000:
-
-        score += 15
-        evidence.append(
-            "Very high population impact"
-        )
-
-    elif population >= 2500:
-
-        score += 10
-        evidence.append(
-            "High population impact"
-        )
-
-    elif population >= 1000:
-
-        score += 5
-        evidence.append(
-            "Significant population impact"
-        )
-
-    # ============================================================
-    # LIMIT SCORE
-    # ============================================================
-
-    score = min(
-        round(score),
-        100
-    )
-
-    # ============================================================
-    # PRIORITY CLASSIFICATION
-    # ============================================================
-
-    if score >= 80:
-
-        priority = "P1"
-        level = "CRITICAL"
-
-        recommended_action = (
-            "Immediately isolate the affected zone "
-            "and dispatch an emergency repair crew."
-        )
-
-        response_time = "Immediate"
-
-        dispatch_required = True
-
-    elif score >= 60:
-
-        priority = "P2"
-        level = "HIGH"
-
-        recommended_action = (
-            "Dispatch an inspection crew urgently "
-            "and investigate the affected zone."
-        )
-
-        response_time = "Within 1 hour"
-
-        dispatch_required = True
-
-    elif score >= 35:
-
-        priority = "P3"
-        level = "MEDIUM"
-
-        recommended_action = (
-            "Schedule a field inspection and "
-            "continue close monitoring."
-        )
-
-        response_time = "Within 24 hours"
-
-        dispatch_required = False
-
-    else:
-
-        priority = "P4"
-        level = "LOW"
-
-        recommended_action = (
-            "Continue routine monitoring."
-        )
-
-        response_time = "Routine"
-
-        dispatch_required = False
-
-    # ============================================================
-    # INTELLIGENT OVERRIDES
-    #
-    # Certain conditions should never be treated as low priority.
-    # ============================================================
-
-    if leak_detected and priority in {"P3", "P4"}:
-
-        priority = "P2"
-        level = "HIGH"
-
-        recommended_action = (
-            "Dispatch an inspection crew urgently "
-            "and investigate the confirmed leak."
-        )
-
-        response_time = "Within 1 hour"
-
-        dispatch_required = True
-
-    if condition_name == "SENSOR_FAULT":
-
-        if priority == "P4":
-
-            priority = "P3"
-            level = "MEDIUM"
-
-        recommended_action = (
-            "Inspect or recalibrate the affected "
-            "sensor node."
-        )
-
-        response_time = "Within 24 hours"
-
-    if condition_name == "WATER_QUALITY":
-
-        if priority == "P4":
-
-            priority = "P3"
-            level = "MEDIUM"
-
-        recommended_action = (
-            "Inspect water-quality conditions "
-            "and verify pH, TDS and turbidity readings."
-        )
-
-        response_time = "Within 24 hours"
-
-    # ============================================================
-    # EXPLANATION FOR AI / UI
-    # ============================================================
-
-    if evidence:
-
-        reason = (
-            "Priority increased because of: "
-            + ", ".join(evidence)
-            + "."
-        )
-
-    else:
-
-        reason = (
-            "Priority determined from the current "
-            "HydroIQ risk score and operating condition."
-        )
-
-    # ============================================================
-    # FINAL RESULT
-    # ============================================================
 
     return {
-        "priority": priority,
+        "score": priority_score,
         "level": level,
-        "score": score,
-        "location_score": location_score,
-
-        "condition": condition_name,
+        "priority": priority_code,
+        "prediction": prediction,
+        "ml_confidence": round(
+            confidence,
+            4
+        ),
+        "sensor_health": round(
+            health_score,
+            2
+        ),
+        "location_score": round(
+            location_score,
+            2
+        ),
+        "condition": condition,
         "severity": severity,
-
-        "reason": reason,
-
-        "recommended_action": recommended_action,
-
+        "reason": (
+            f"Priority increased because of: {condition}."
+        ),
+        "recommended_action": action,
         "response_time": response_time,
-
         "dispatch_required": dispatch_required,
-
+        "explanation": (
+            "Priority combines WRS, condition severity, "
+            "location importance and sensor reliability."
+        ),
         "evidence": evidence
     }

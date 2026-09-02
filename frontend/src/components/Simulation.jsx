@@ -16,7 +16,9 @@ import {
 import { fetchLatestSensorData } from '../api';
 
 export default function Simulation() {
+  const [allZones, setAllZones] = useState([]);
   const [sensorData, setSensorData] = useState(null);
+  const [beforeData, setBeforeData] = useState(null);
 
   const [zone, setZone] = useState('Zone_A');
   const [incidentType, setIncidentType] = useState('Major Pipeline Leak');
@@ -28,18 +30,24 @@ export default function Simulation() {
     const getData = async () => {
       try {
         const data = await fetchLatestSensorData();
+        const zones = Array.isArray(data?.zones)
+          ? data.zones
+          : data
+            ? [data]
+            : [];
 
-        if (data) {
-          const latest =
-            data?.zones?.[0] ||
-            data;
+        if (zones.length === 0) return;
 
-          setSensorData(latest);
+        setAllZones(zones);
 
-          if (latest.zone) {
-            setZone(latest.zone);
-          }
-        }
+        const selected = zones.find((item) => item.zone === zone) || zones[0];
+
+        setSensorData(selected);
+
+        setBeforeData((current) => {
+          if (current) return current;
+          return { ...selected };
+        });
       } catch (error) {
         console.error('Simulation sensor error:', error);
       }
@@ -50,22 +58,101 @@ export default function Simulation() {
     const interval = setInterval(getData, 3000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [zone]);
 
-  const pressure = Number(sensorData?.pressure ?? 2.55);
-  const flow = Number(sensorData?.flow ?? 116);
-  const acoustic = Number(sensorData?.acoustic ?? 1.47);
+  const livePressure = Number(sensorData?.pressure ?? 2.55);
+  const liveFlow = Number(sensorData?.flow ?? 116);
+  const liveAcoustic = Number(sensorData?.acoustic ?? 1.47);
 
-  const simulatedPressure = Math.max(
-    0.8,
-    pressure * 0.6
-  );
+  const pressure = Number(beforeData?.pressure ?? livePressure);
+  const flow = Number(beforeData?.flow ?? liveFlow);
+  const acoustic = Number(beforeData?.acoustic ?? liveAcoustic);
 
-  const simulatedFlow = flow * 1.1;
-  const simulatedAcoustic = acoustic * 2.2;
+  /*
+   * Digital Twin incident models.
+   * Each incident produces a different hypothetical network outcome.
+   * These values are simulation-only; real sensor telemetry is untouched.
+   */
+  const incidentModel = {
+    'Major Pipeline Leak': {
+      pressureFactor: 0.55,
+      flowFactor: 1.25,
+      acousticFactor: 2.8,
+      minimumAcoustic: 0.9,
+      lossFactor: 6.6,
+      basePriority: 2,
+      description:
+        'Major leak scenario: pressure falls while flow and acoustic activity increase significantly.',
+    },
+    'Pressure Drop': {
+      pressureFactor: 0.65,
+      flowFactor: 0.98,
+      acousticFactor: 1.25,
+      minimumAcoustic: 0.35,
+      lossFactor: 3.2,
+      basePriority: 3,
+      description:
+        'Pressure-drop scenario: pressure decreases with a smaller change in flow and acoustic activity.',
+    },
+    'Flow Anomaly': {
+      pressureFactor: 0.9,
+      flowFactor: 1.35,
+      acousticFactor: 1.45,
+      minimumAcoustic: 0.4,
+      lossFactor: 4.4,
+      basePriority: 3,
+      description:
+        'Flow-anomaly scenario: abnormal flow increases network stress and produces a moderate acoustic response.',
+    },
+    'Sensor Failure': {
+      pressureFactor: 1.0,
+      flowFactor: 1.0,
+      acousticFactor: 1.0,
+      minimumAcoustic: 0,
+      lossFactor: 0,
+      basePriority: 3,
+      description:
+        'Sensor-failure scenario: physical network conditions are unchanged, but telemetry reliability is compromised.',
+    },
+  };
 
-  const waterLoss = Math.round(simulatedFlow * 24 * 6.6);
-  const population = 2300;
+  const model = incidentModel[incidentType] || incidentModel['Pressure Drop'];
+
+  const simulatedPressure = Math.max(0.8, pressure * model.pressureFactor);
+  const simulatedFlow = flow * model.flowFactor;
+  const simulatedAcoustic =
+    incidentType === 'Sensor Failure'
+      ? acoustic
+      : Math.max(model.minimumAcoustic, acoustic * model.acousticFactor);
+
+  const waterLoss =
+    incidentType === 'Sensor Failure'
+      ? 0
+      : Math.round(simulatedFlow * 24 * model.lossFactor);
+
+  const ZONE_POPULATION = {
+    Zone_A: 1200,
+    Zone_B: 900,
+    Zone_C: 2300,
+    Zone_D: 500,
+  };
+
+  const population = ZONE_POPULATION[zone] || 0;
+
+  const handleZoneChange = (nextZone) => {
+    const selected = allZones.find((item) => item.zone === nextZone);
+
+    setZone(nextZone);
+    setSimulated(false);
+    setRunning(false);
+
+    if (selected) {
+      setSensorData(selected);
+      setBeforeData({ ...selected });
+    } else {
+      setBeforeData(null);
+    }
+  };
 
   const runSimulation = () => {
     setRunning(true);
@@ -79,18 +166,40 @@ export default function Simulation() {
   const resetSimulation = () => {
     setSimulated(false);
     setRunning(false);
+
+    if (sensorData) {
+      setBeforeData({ ...sensorData });
+    }
   };
 
   const getPriority = () => {
+    const zoneRisk = {
+      Zone_A: 0,
+      Zone_B: 26,
+      Zone_C: 60,
+      Zone_D: 33,
+    };
+
+    const risk = zoneRisk[zone] ?? 0;
+
+    // Incident severity + current zone risk determine simulated priority.
     if (incidentType === 'Major Pipeline Leak') {
-      return 'P1';
+      if (risk >= 50) return 'P1';
+      return risk >= 20 ? 'P2' : 'P2';
     }
 
     if (incidentType === 'Pressure Drop') {
-      return 'P2';
+      if (risk >= 50) return 'P1';
+      return risk >= 20 ? 'P2' : 'P3';
     }
 
-    return 'P3';
+    if (incidentType === 'Flow Anomaly') {
+      if (risk >= 50) return 'P2';
+      return risk >= 20 ? 'P3' : 'P3';
+    }
+
+    // Sensor failure is primarily a reliability/maintenance issue.
+    return risk >= 50 ? 'P2' : 'P3';
   };
 
   const priority = getPriority();
@@ -181,17 +290,13 @@ export default function Simulation() {
 
               <select
                 value={zone}
-                onChange={(e) => {
-                  setZone(e.target.value);
-                  setSimulated(false);
-                }}
+                onChange={(e) => handleZoneChange(e.target.value)}
                 className="w-full mt-2 px-4 py-3 bg-darkBg border border-gray-700 rounded-lg text-white outline-none focus:border-accentTeal"
               >
                 <option value="Zone_A">Zone_A</option>
                 <option value="Zone_B">Zone_B</option>
                 <option value="Zone_C">Zone_C</option>
                 <option value="Zone_D">Zone_D</option>
-                <option value="Zone_F">Zone_F</option>
               </select>
 
             </div>
@@ -402,8 +507,7 @@ export default function Simulation() {
 
 
             <p className="text-sm text-gray-400 mt-6 leading-relaxed">
-              Simulated pressure drop combined with abnormal
-              acoustic and flow behaviour.
+              {model.description}
             </p>
 
 

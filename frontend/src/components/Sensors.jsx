@@ -2,17 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { fetchLatestSensorData } from '../api';
 
 export default function Sensors() {
-  const [sensorData, setSensorData] = useState(null);
+  const [allZones, setAllZones] = useState([]);
+  const [selectedZone, setSelectedZone] = useState('Zone_A');
   const [lastUpdated, setLastUpdated] = useState(null);
 
   useEffect(() => {
     const getData = async () => {
       const data = await fetchLatestSensorData();
 
-     if (data) {
-  setSensorData(data?.zones?.[0] || null);
-  setLastUpdated(new Date());
-}
+      if (data?.zones?.length) {
+        setAllZones(data.zones);
+        setLastUpdated(new Date());
+      }
     };
 
     getData();
@@ -21,6 +22,11 @@ export default function Sensors() {
 
     return () => clearInterval(interval);
   }, []);
+
+  const sensorData =
+    allZones.find(zone => zone.zone === selectedZone) ||
+    allZones[0] ||
+    null;
 
   if (!sensorData) {
     return (
@@ -75,6 +81,7 @@ export default function Sensors() {
     <div className="p-6 space-y-6">
 
       {/* Header */}
+
       <div className="flex justify-between items-center">
 
         <div>
@@ -94,23 +101,76 @@ export default function Sensors() {
       </div>
 
 
+      {/* Zone Selector */}
+
+      <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
+
+        <div className="flex justify-between items-center mb-4">
+
+          <div>
+            <p className="text-sm font-semibold">
+              Select Zone
+            </p>
+
+            <p className="text-xs text-gray-500 mt-1">
+              View live sensors for each monitored zone
+            </p>
+          </div>
+
+          <span className="text-xs text-gray-500">
+            {allZones.length} zones connected
+          </span>
+
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+
+          {allZones.map(zone => {
+
+            const isActive =
+              zone.zone === selectedZone;
+
+            return (
+              <button
+                key={zone.zone}
+                onClick={() => setSelectedZone(zone.zone)}
+                className={`px-5 py-2.5 rounded-xl border text-sm font-semibold transition-all ${
+                  isActive
+                    ? 'bg-accentTeal/15 border-accentTeal text-accentTeal'
+                    : 'bg-gray-900/40 border-gray-700 text-gray-400 hover:border-accentTeal/50 hover:text-white'
+                }`}
+              >
+                {zone.zone}
+              </button>
+            );
+
+          })}
+
+        </div>
+
+      </div>
+
+
       {/* Device Card */}
+
       <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
 
         <div className="flex justify-between items-start">
 
           <div>
+
             <p className="text-sm text-gray-400">
               Connected Device
             </p>
 
             <p className="text-xl font-bold mt-1">
-              {sensorData.device_id || 'ESP32_Node_1'}
+              {sensorData.device_id || '--'}
             </p>
 
             <p className="text-sm text-gray-400 mt-1">
-              Monitoring Zone: {sensorData.zone || 'Zone_A'}
+              Monitoring Zone: {sensorData.zone || '--'}
             </p>
+
           </div>
 
           <div className="text-right">
@@ -137,13 +197,22 @@ export default function Sensors() {
 
 
       {/* Sensor Grid */}
+
       <div>
 
         <div className="flex justify-between items-center mb-4">
 
-          <h3 className="text-lg font-semibold">
-            Live Sensor Telemetry
-          </h3>
+          <div>
+
+            <h3 className="text-lg font-semibold">
+              Live Sensor Telemetry
+            </h3>
+
+            <p className="text-xs text-gray-500 mt-1">
+              Live measurements from {sensorData.zone}
+            </p>
+
+          </div>
 
           <span className="text-xs text-gray-500">
             Refreshing every 3 seconds
@@ -154,7 +223,7 @@ export default function Sensors() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 
-          {sensors.map((sensor) => (
+          {sensors.map(sensor => (
 
             <div
               key={sensor.name}
@@ -164,6 +233,7 @@ export default function Sensors() {
               <div className="flex justify-between items-start">
 
                 <div>
+
                   <p className="text-sm text-gray-400">
                     {sensor.name}
                   </p>
@@ -171,6 +241,7 @@ export default function Sensors() {
                   <p className="text-xs text-gray-500 mt-1">
                     {sensor.description}
                   </p>
+
                 </div>
 
                 <span className="text-xs text-accentTeal">
@@ -221,6 +292,7 @@ export default function Sensors() {
 
 
       {/* Device Summary */}
+
       <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
 
         <h3 className="text-lg font-semibold mb-4">
@@ -230,6 +302,7 @@ export default function Sensors() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 
           <div>
+
             <p className="text-xs text-gray-500">
               Device ID
             </p>
@@ -237,10 +310,12 @@ export default function Sensors() {
             <p className="text-sm font-semibold mt-1">
               {sensorData.device_id || '--'}
             </p>
+
           </div>
 
 
           <div>
+
             <p className="text-xs text-gray-500">
               Zone
             </p>
@@ -248,10 +323,12 @@ export default function Sensors() {
             <p className="text-sm font-semibold mt-1">
               {sensorData.zone || '--'}
             </p>
+
           </div>
 
 
           <div>
+
             <p className="text-xs text-gray-500">
               Sensors Connected
             </p>
@@ -259,10 +336,12 @@ export default function Sensors() {
             <p className="text-sm font-semibold mt-1">
               6 / 6
             </p>
+
           </div>
 
 
           <div>
+
             <p className="text-xs text-gray-500">
               Connection
             </p>
@@ -270,6 +349,7 @@ export default function Sensors() {
             <p className="text-sm font-semibold text-accentTeal mt-1">
               Online
             </p>
+
           </div>
 
         </div>

@@ -1,17 +1,41 @@
 import React, { useEffect, useState } from 'react';
-import { fetchLatestAnalytics, fetchLatestSensorData } from '../api';
+import {
+  fetchLatestAnalytics,
+  fetchLatestSensorData
+} from '../api';
 
 export default function LeakDetection() {
   const [analysis, setAnalysis] = useState(null);
-  const [sensorData, setSensorData] = useState(null);
+  const [sensorData, setSensorData] = useState([]);
+  const [selectedZone, setSelectedZone] = useState(null);
 
   useEffect(() => {
     const getData = async () => {
       const analytics = await fetchLatestAnalytics();
       const sensors = await fetchLatestSensorData();
 
-      setAnalysis(analytics);
-      setSensorData(sensors?.zones?.[0] || null);
+      if (analytics) {
+        setAnalysis(analytics);
+      }
+
+      const zones = sensors?.zones || [];
+      setSensorData(zones);
+
+      if (zones.length > 0) {
+        setSelectedZone((current) => {
+          if (current) {
+            const exists = zones.find(
+              (zone) => zone.device_id === current.device_id
+            );
+
+            if (exists) {
+              return exists;
+            }
+          }
+
+          return zones[0];
+        });
+      }
     };
 
     getData();
@@ -21,7 +45,7 @@ export default function LeakDetection() {
     return () => clearInterval(interval);
   }, []);
 
-  if (!analysis || !sensorData) {
+  if (!analysis || !selectedZone) {
     return (
       <div className="p-6">
         <p className="text-gray-400">
@@ -31,18 +55,95 @@ export default function LeakDetection() {
     );
   }
 
-  const leak = analysis.leak || {};
-  const risk = analysis.risk || {};
-  const condition = analysis.condition || {};
+  const analyticsZones = analysis.zones || [];
 
-  const leakDetected = leak.leak_detected === true;
-  const isAnomaly = condition.condition === 'EARLY_ANOMALY';
+  const selectedAnalytics =
+    analyticsZones.find(
+      (zone) => zone.device_id === selectedZone.device_id
+    ) || {};
+
+  const leak = selectedAnalytics.leak || {};
+  const risk = selectedAnalytics.risk || {};
+  const condition = selectedAnalytics.condition || {};
+
+  const leakDetected =
+    leak.leak_detected === true ||
+    condition.condition === 'LEAK';
+
+  const conditionName =
+    condition.condition ||
+    selectedZone.stage ||
+    'NORMAL';
+
+  const severity =
+    condition.severity ||
+    'LOW';
+
+  const getStatusClass = (zone) => {
+    const zoneAnalytics =
+      analyticsZones.find(
+        (item) => item.device_id === zone.device_id
+      ) || {};
+
+    const zoneCondition =
+      zoneAnalytics.condition?.condition ||
+      zone.stage ||
+      'NORMAL';
+
+    if (zoneCondition === 'LEAK') {
+      return 'border-red-500/40 bg-red-500/10';
+    }
+
+    if (zoneCondition === 'EARLY_ANOMALY') {
+      return 'border-yellow-500/40 bg-yellow-500/10';
+    }
+
+    if (zoneCondition === 'WATER_QUALITY') {
+      return 'border-orange-500/40 bg-orange-500/10';
+    }
+
+    return 'border-gray-800 bg-cardBg';
+  };
+
+  const getStatusTextClass = (zone) => {
+    const zoneAnalytics =
+      analyticsZones.find(
+        (item) => item.device_id === zone.device_id
+      ) || {};
+
+    const zoneCondition =
+      zoneAnalytics.condition?.condition ||
+      zone.stage ||
+      'NORMAL';
+
+    if (zoneCondition === 'LEAK') {
+      return 'text-red-400';
+    }
+
+    if (zoneCondition === 'EARLY_ANOMALY') {
+      return 'text-yellow-400';
+    }
+
+    if (zoneCondition === 'WATER_QUALITY') {
+      return 'text-orange-400';
+    }
+
+    return 'text-accentTeal';
+  };
+
+  const abnormalZones = analyticsZones.filter((zone) => {
+    const conditionName =
+      zone.condition?.condition ||
+      zone.stage ||
+      'NORMAL';
+
+    return conditionName !== 'NORMAL';
+  });
+
   return (
     <div className="p-6 space-y-6">
 
-      {/* Header */}
       <div className="flex justify-between items-center">
-
         <div>
           <h2 className="text-2xl font-bold">
             Leak Detection
@@ -55,53 +156,142 @@ export default function LeakDetection() {
 
         <span
           className={`px-3 py-1 rounded-full text-xs font-semibold ${
-            leakDetected
+            abnormalZones.some(
+              (zone) =>
+                zone.condition?.condition === 'LEAK'
+            )
               ? 'bg-red-500/20 text-red-400 border border-red-500/30'
               : 'bg-accentTeal/20 text-accentTeal border border-accentTeal/30'
           }`}
         >
-          {leakDetected ? '● LEAK DETECTED' : '● NO LEAK'}
+          {abnormalZones.some(
+            (zone) =>
+              zone.condition?.condition === 'LEAK'
+          )
+            ? '● LEAK DETECTED'
+            : '● NO LEAK'}
         </span>
-
       </div>
 
+      <div>
+        <h3 className="text-lg font-semibold mb-4">
+          Zone Leak Status
+        </h3>
 
-      {/* Main Status */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {sensorData.map((zone) => {
+            const zoneAnalytics =
+              analyticsZones.find(
+                (item) =>
+                  item.device_id === zone.device_id
+              ) || {};
+
+            const zoneCondition =
+              zoneAnalytics.condition?.condition ||
+              zone.stage ||
+              'NORMAL';
+
+            const zoneRisk =
+              zoneAnalytics.risk?.score ??
+              zoneAnalytics.risk?.wrs ??
+              0;
+
+            const isSelected =
+              selectedZone.device_id === zone.device_id;
+
+            return (
+              <button
+                key={zone.device_id}
+                onClick={() => setSelectedZone(zone)}
+                className={`text-left p-5 rounded-xl border transition-all ${
+                  getStatusClass(zone)
+                } ${
+                  isSelected
+                    ? 'ring-2 ring-accentTeal'
+                    : ''
+                }`}
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-sm text-gray-400">
+                      {zone.zone}
+                    </p>
+
+                    <p className="text-lg font-bold mt-1">
+                      {zone.device_id}
+                    </p>
+                  </div>
+
+                  <span
+                    className={`text-xs font-semibold ${
+                      getStatusTextClass(zone)
+                    }`}
+                  >
+                    ●
+                  </span>
+                </div>
+
+                <p
+                  className={`text-sm font-semibold mt-4 ${
+                    getStatusTextClass(zone)
+                  }`}
+                >
+                  {zoneCondition}
+                </p>
+
+                <p className="text-xs text-gray-500 mt-1">
+                  Risk {zoneRisk}/100
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div
         className={`p-6 rounded-xl border ${
           leakDetected
             ? 'border-red-500/30 bg-red-500/5'
+            : conditionName === 'EARLY_ANOMALY'
+            ? 'border-yellow-500/30 bg-yellow-500/5'
             : 'border-gray-800 bg-cardBg'
         }`}
       >
-
         <div className="flex justify-between items-start">
 
           <div>
-
             <p className="text-sm text-gray-400">
-              Current Network Condition
+              Selected Zone
             </p>
 
-            <h3
-              className={`text-3xl font-bold mt-2 ${
+            <h3 className="text-xl font-bold mt-1">
+              {selectedZone.zone}
+            </h3>
+
+            <p className="text-sm text-gray-500 mt-1">
+              {selectedZone.device_id}
+            </p>
+
+            <p
+              className={`text-3xl font-bold mt-4 ${
                 leakDetected
                   ? 'text-red-400'
+                  : conditionName === 'EARLY_ANOMALY'
+                  ? 'text-yellow-400'
+                  : conditionName === 'WATER_QUALITY'
+                  ? 'text-orange-400'
                   : 'text-accentTeal'
               }`}
             >
-              {condition.condition || 'NORMAL'}
-            </h3>
-
-            <p className="text-sm text-gray-400 mt-2">
-              Severity: {condition.severity || 'LOW'}
+              {conditionName}
             </p>
 
+            <p className="text-sm text-gray-400 mt-2">
+              Severity: {severity}
+            </p>
           </div>
 
-
           <div className="text-right">
-
             <p className="text-sm text-gray-400">
               Detection Confidence
             </p>
@@ -114,22 +304,23 @@ export default function LeakDetection() {
               }`}
             >
               {leak.confidence != null
-                ? `${Math.round(leak.confidence * 100)}%`
+                ? `${Math.round(
+                    leak.confidence * 100
+                  )}%`
+                : condition.confidence != null
+                ? `${Math.round(
+                    condition.confidence * 100
+                  )}%`
                 : '--'}
             </p>
-
           </div>
 
         </div>
-
       </div>
 
-
-      {/* Sensor Evidence */}
       <div>
-
         <h3 className="text-lg font-semibold mb-4">
-          Sensor Evidence
+          Sensor Evidence — {selectedZone.zone}
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -140,17 +331,18 @@ export default function LeakDetection() {
             </p>
 
             <p className="text-3xl font-bold text-accentBlue mt-2">
-              {sensorData.pressure}
+              {selectedZone.pressure ?? '--'}
               <span className="text-sm text-gray-500 ml-1">
                 bar
               </span>
             </p>
 
             <p className="text-xs text-gray-400 mt-2">
-              {leakDetected ? 'Possible pressure drop' : 'Within monitored range'}
+              {leakDetected
+                ? 'Possible pressure drop'
+                : 'Within monitored range'}
             </p>
           </div>
-
 
           <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
             <p className="text-sm text-gray-400">
@@ -158,17 +350,18 @@ export default function LeakDetection() {
             </p>
 
             <p className="text-3xl font-bold text-accentTeal mt-2">
-              {sensorData.flow}
+              {selectedZone.flow ?? '--'}
               <span className="text-sm text-gray-500 ml-1">
                 L/min
               </span>
             </p>
 
             <p className="text-xs text-gray-400 mt-2">
-              {leakDetected ? 'Abnormal flow indicator' : 'Flow being monitored'}
+              {leakDetected
+                ? 'Abnormal flow indicator'
+                : 'Flow being monitored'}
             </p>
           </div>
-
 
           <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
             <p className="text-sm text-gray-400">
@@ -176,26 +369,25 @@ export default function LeakDetection() {
             </p>
 
             <p className="text-3xl font-bold text-warningOrange mt-2">
-              {sensorData.acoustic}
+              {selectedZone.acoustic ?? '--'}
             </p>
 
             <p className="text-xs text-gray-400 mt-2">
-              {leakDetected ? 'Elevated acoustic signal' : 'Acoustic signal monitored'}
+              {leakDetected
+                ? 'Elevated acoustic signal'
+                : 'Acoustic signal monitored'}
             </p>
           </div>
 
         </div>
-
       </div>
 
-
-      {/* Risk */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
         <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
 
           <p className="text-sm text-gray-400">
-            Network Risk
+            Zone Risk
           </p>
 
           <p
@@ -207,7 +399,8 @@ export default function LeakDetection() {
                 : 'text-accentTeal'
             }`}
           >
-            {risk.score ?? '--'}
+            {risk.score ?? risk.wrs ?? '--'}
+
             <span className="text-sm text-gray-500">
               /100
             </span>
@@ -219,27 +412,24 @@ export default function LeakDetection() {
 
         </div>
 
-
         <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
 
           <p className="text-sm text-gray-400">
-            Affected Device
+            Selected Device
           </p>
 
           <p className="text-xl font-bold mt-2">
-            {sensorData.device_id || '--'}
+            {selectedZone.device_id || '--'}
           </p>
 
           <p className="text-sm text-gray-400 mt-1">
-            Zone: {sensorData.zone || '--'}
+            Zone: {selectedZone.zone || '--'}
           </p>
 
         </div>
 
       </div>
 
-
-      {/* Explanation */}
       <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
 
         <h3 className="text-lg font-semibold mb-3">
@@ -248,13 +438,12 @@ export default function LeakDetection() {
 
         <p className="text-sm text-gray-300 leading-relaxed">
           {leak.reason ||
+            condition.reason ||
             'No abnormal leak indicators have been detected.'}
         </p>
 
       </div>
 
-
-      {/* Action */}
       <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
 
         <h3 className="text-lg font-semibold mb-2">
@@ -263,7 +452,9 @@ export default function LeakDetection() {
 
         <p className="text-sm text-gray-400">
           {leakDetected
-            ? `Inspect ${sensorData.zone || 'the affected zone'} and verify pressure, flow and acoustic readings.`
+            ? `Inspect ${selectedZone.zone || 'the affected zone'} and verify pressure, flow and acoustic readings.`
+            : conditionName === 'EARLY_ANOMALY'
+            ? `Continue monitoring ${selectedZone.zone} and schedule a preventive field inspection.`
             : 'Continue monitoring the network for abnormal changes.'}
         </p>
 
@@ -272,3 +463,4 @@ export default function LeakDetection() {
     </div>
   );
 }
+

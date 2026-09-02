@@ -53,65 +53,68 @@ export default function NetworkMap() {
    * risk and leak are directly inside each zone.
    */
   const zones = useMemo(() => {
-    const rawZones = analytics?.zones || [];
+  const rawZones = analytics?.zones || [];
 
-    return rawZones.map((zone, index) => {
-      const sensor = zone?.sensor_data || zone || {};
+  return rawZones.map((zone, index) => {
+    const sensor = zone?.sensor_data || zone || {};
 
-      const condition =
+    return {
+      ...zone,
+
+      id:
+        zone?.zone ||
+        `Zone_${String.fromCharCode(65 + index)}`,
+
+      device:
+        zone?.device_id ||
+        `ESP32_Node_${index + 1}`,
+
+      condition:
         zone?.condition?.condition ||
         zone?.stage ||
-        'NORMAL';
+        'NORMAL',
 
-      const risk = Number(zone?.risk?.score) || 0;
+      risk:
+        Number(zone?.risk?.wrs ?? zone?.risk?.score) || 0,
 
-      const leakDetected =
-        zone?.leak?.leak_detected === true;
+      leakDetected:
+        zone?.leak?.leak_detected === true,
 
-      const qualityStatus =
-        zone?.water_quality?.status ||
-        'Good';
+      qualityStatus:
+        zone?.water_quality?.status || 'Good',
 
-      return {
-        ...zone,
+      pressure:
+        Number(sensor?.pressure) || 0,
 
-        id: zone?.zone || `Zone_${String.fromCharCode(65 + index)}`,
+      flow:
+        Number(sensor?.flow) || 0,
 
-        device:
-          zone?.device_id ||
-          `ESP32_Node_${index + 1}`,
+      acoustic:
+        Number(sensor?.acoustic) || 0,
 
-        condition,
+      ph:
+        Number(sensor?.ph) || 0,
 
-        risk,
+      tds:
+        Number(sensor?.tds) || 0,
 
-        leakDetected,
+      turbidity:
+        Number(sensor?.turbidity) || 0,
 
-        qualityStatus,
+      population:
+        Number(zone?.population ?? zone?.impact?.population) || 0,
 
-        pressure: Number(sensor?.pressure) || 0,
+      criticalArea:
+        Boolean(
+          zone?.critical_area ??
+          zone?.impact?.critical_area
+        ),
 
-        flow: Number(sensor?.flow) || 0,
-
-        acoustic: Number(sensor?.acoustic) || 0,
-
-        ph: Number(sensor?.ph) || 0,
-
-        tds: Number(sensor?.tds) || 0,
-
-        turbidity: Number(sensor?.turbidity) || 0,
-
-        population:
-          Number(zone?.population) || 0,
-
-        criticalArea:
-          Boolean(zone?.critical_area),
-
-        locationScore:
-          Number(zone?.location_score) || 0
-      };
-    });
-  }, [analytics]);
+      locationScore:
+        Number(zone?.location_score) || 0
+    };
+  });
+}, [analytics]);
 
   useEffect(() => {
     if (!selectedZone && zones.length > 0) {
