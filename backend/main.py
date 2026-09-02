@@ -19,6 +19,7 @@ from backend.database.influxdb import (
 )
 
 from backend.mqtt_service import start_mqtt_background
+from backend.ai_assistant import router as ai_router
 
 
 
@@ -59,6 +60,10 @@ app.add_middleware(
 )
 
 
+
+
+# AI ASSISTANT
+app.include_router(ai_router)
 
 
 DEVICE_ZONE_MAP = {

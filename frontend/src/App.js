@@ -10,6 +10,7 @@ import Simulation from './components/Simulation';
 import NetworkMap from './components/NetworkMap';
 import LeakDetection from './components/LeakDetection';
 import WaterQuality from './components/WaterQuality';
+import AIInsights from './components/AIInsights';
 
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -31,13 +32,14 @@ function App() {
 
         {/* NETWORK MAP */}
         {activeTab === 'network-map' && (
-  <NetworkMap />
-)}
+          <NetworkMap />
+        )}
 
         {/* LEAK DETECTION */}
         {activeTab === 'leak-detection' && (
-  <LeakDetection />
-)}
+          <LeakDetection />
+        )}
+
         {/* LEAK LOCALIZATION */}
         {activeTab === 'leak-localization' && (
           <LeakLocalization />
@@ -45,8 +47,8 @@ function App() {
 
         {/* WATER QUALITY */}
         {activeTab === 'water-quality' && (
-  <WaterQuality />
-)}
+          <WaterQuality />
+        )}
 
         {/* ALERTS */}
         {activeTab === 'alerts' && (
@@ -63,7 +65,12 @@ function App() {
           <Sensors />
         )}
 
-        {/* DIGITAL TWIN */}
+        {/* AI INSIGHTS */}
+        {activeTab === 'ai-insights' && (
+          <AIInsights />
+        )}
+
+        {/* SIMULATION */}
         {activeTab === 'simulation' && (
           <Simulation />
         )}
