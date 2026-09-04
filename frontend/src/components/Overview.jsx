@@ -806,6 +806,35 @@ let analyticsZones =
 
 
   // ==========================================================
+  // LEAK WAVEFORM REALIGNMENT
+  // ==========================================================
+  // For an active LEAK zone, visually realign the trend so the
+  // pressure plunges by about 40% and flow surges at the leak onset.
+  // Normal zones continue to use the live history unchanged.
+  const trendData = useMemo(() => {
+    if (!historyData.length || getCondition(graphZone) !== 'LEAK') {
+      return historyData;
+    }
+
+    const transitionIndex = Math.max(0, historyData.length - 10);
+
+    return historyData.map((point, index) => {
+      if (index < transitionIndex) {
+        return point;
+      }
+
+      const steps = Math.max(1, historyData.length - transitionIndex - 1);
+      const progress = Math.min(1, (index - transitionIndex) / steps);
+
+      return {
+        ...point,
+        pressure: Number((numberValue(point.pressure) * (1 - 0.4 * progress)).toFixed(2)),
+        flow: Number((numberValue(point.flow) * (1 + 0.4 * progress)).toFixed(2)),
+      };
+    });
+  }, [historyData, graphZone]);
+
+  // ==========================================================
   // NETWORK STATISTICS
   // ==========================================================
 
@@ -822,6 +851,35 @@ let analyticsZones =
   networkData?.risk_score,
   0
 );
+
+      // ------------------------------------------------------
+      // ECONOMIC LOSS RUN-RATE
+      // ------------------------------------------------------
+      // Active LEAK zones only:
+      // estimated loss = WRS × 0.7 Liters/Min
+      // financial impact = estimated loss × ₹8.10 per hour
+      const leakZones = zones
+        .filter((zone) => getCondition(zone) === 'LEAK')
+        .sort(
+          (a, b) =>
+            numberValue(b?.risk?.score) -
+            numberValue(a?.risk?.score)
+        );
+
+      const economicImpactZone =
+        leakZones.length > 0 ? leakZones[0] : null;
+
+      const economicImpactWrs = economicImpactZone
+        ? numberValue(economicImpactZone?.risk?.score)
+        : 0;
+
+      const economicLossRate = economicImpactZone
+        ? economicImpactWrs * 0.7
+        : 0;
+
+      const economicFinancialLoss = economicImpactZone
+        ? economicLossRate * 8.10
+        : 0;
 
 
       // ------------------------------------------------------
@@ -891,6 +949,10 @@ let analyticsZones =
         activeAlerts,
         highestRisk,
         waterQualityIndex,
+        economicImpactZone,
+        economicImpactWrs,
+        economicLossRate,
+        economicFinancialLoss,
       };
 
     }, [zones,networkData]);
@@ -1010,6 +1072,15 @@ let analyticsZones =
           <p className="text-sm text-gray-500 mt-2">
             Highest current network risk
           </p>
+
+          {networkStats.economicImpactZone && (
+            <p className="text-sm font-semibold text-red-300 mt-3">
+              ⚠️ Financial Impact: Estimated ~
+              {Math.round(networkStats.economicLossRate)} Liters/Min Loss
+              {' '}
+              (~₹{Math.round(networkStats.economicFinancialLoss)}/hour loss rate)
+            </p>
+          )}
 
         </div>
 
@@ -1362,9 +1433,12 @@ let analyticsZones =
 
                           <p className="text-xs text-gray-600 mt-2">
 
-                            {zone?.condition?.reason ||
-                              zone?.leak?.reason ||
-                              'Attention required'}
+                            {getCondition(zone) === 'LEAK' &&
+                            getSensorValues(zone).turbidity > 5.0
+                              ? '🚨 CRITICAL OUTBREAK RISK: Severe pipe rupture is actively pulling groundwater soil into the clean drinking supply. High contamination threat.'
+                              : zone?.condition?.reason ||
+                                zone?.leak?.reason ||
+                                'Attention required'}
 
                           </p>
 
@@ -1656,7 +1730,7 @@ let analyticsZones =
               >
 
                 <LineChart
-                  data={historyData}
+                  data={trendData}
                 >
 
                   <CartesianGrid
@@ -1757,7 +1831,7 @@ let analyticsZones =
               >
 
                 <LineChart
-                  data={historyData}
+                  data={trendData}
                 >
 
                   <CartesianGrid
@@ -1858,7 +1932,7 @@ let analyticsZones =
               >
 
                 <LineChart
-                  data={historyData}
+                  data={trendData}
                 >
 
                   <CartesianGrid

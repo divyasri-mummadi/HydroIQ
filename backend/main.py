@@ -11,6 +11,7 @@ from backend.database.influxdb import (
 )
 
 from backend.mqtt_service import start_mqtt_background
+from backend.ai_assistant import router as ai_router
 
 
 app = FastAPI(
@@ -18,6 +19,9 @@ app = FastAPI(
     description="Smart Water Network Monitoring and Analytics",
     version="1.0"
 )
+
+
+app.include_router(ai_router)
 
 
 app.add_middleware(
