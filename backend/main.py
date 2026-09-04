@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import time
+from threading import Lock
+
 from analytics import analyze_sensor_data
 
 from backend.database.influxdb import (
@@ -99,8 +102,27 @@ def home():
     }
 
 
-@app.get("/sensors/latest")
-def latest_sensors():
+# ============================================================
+# INFLUXDB CACHE / RATE-LIMIT PROTECTION
+# ============================================================
+# Wokwi publishes telemetry every 2 seconds. Multiple frontend
+# screens can request the same endpoint at nearly the same time.
+# These short caches prevent every browser request from becoming
+# a separate InfluxDB Cloud query.
+
+LATEST_CACHE_TTL = 2.0       # seconds - matches Wokwi publish rate
+HISTORY_CACHE_TTL = 15.0     # seconds - history does not need 2s refresh
+
+_latest_cache = None
+_latest_cache_time = 0.0
+_history_cache = None
+_history_cache_time = 0.0
+
+_latest_cache_lock = Lock()
+_history_cache_lock = Lock()
+
+
+def _query_latest_sensors_uncached():
 
     query = f'''
     from(bucket: "{INFLUX_BUCKET}")
@@ -122,31 +144,17 @@ def latest_sensors():
     latest_by_device = {}
 
     for table in tables:
-
         for record in table.records:
-
             values = record.values
+            device_id = values.get("device_id")
 
-            device_id = values.get(
-                "device_id"
-            )
-
-            if not device_id:
+            if not device_id or device_id not in DEVICE_ZONE_MAP:
                 continue
 
-            if device_id not in DEVICE_ZONE_MAP:
-                continue
-
-            timestamp = values.get(
-                "_time"
-            )
+            timestamp = values.get("_time")
 
             if device_id in latest_by_device:
-
-                existing_time = latest_by_device[
-                    device_id
-                ].get("_time")
-
+                existing_time = latest_by_device[device_id].get("_time")
                 if (
                     existing_time is not None
                     and timestamp is not None
@@ -156,46 +164,19 @@ def latest_sensors():
 
             latest_by_device[device_id] = {
                 "_time": timestamp,
-
                 "device_id": device_id,
-
-                "zone": DEVICE_ZONE_MAP[
-                    device_id
-                ],
-
-                "stage": values.get(
-                    "stage"
-                ),
-
-                "pressure": values.get(
-                    "pressure"
-                ),
-
-                "flow": values.get(
-                    "flow"
-                ),
-
-                "acoustic": values.get(
-                    "acoustic"
-                ),
-
-                "ph": values.get(
-                    "ph"
-                ),
-
-                "tds": values.get(
-                    "tds"
-                ),
-
-                "turbidity": values.get(
-                    "turbidity"
-                )
+                "zone": DEVICE_ZONE_MAP[device_id],
+                "stage": values.get("stage"),
+                "pressure": values.get("pressure"),
+                "flow": values.get("flow"),
+                "acoustic": values.get("acoustic"),
+                "ph": values.get("ph"),
+                "tds": values.get("tds"),
+                "turbidity": values.get("turbidity")
             }
 
     zones = []
-
     for record in latest_by_device.values():
-
         zones.append({
             "device_id": record["device_id"],
             "zone": record["zone"],
@@ -206,22 +187,46 @@ def latest_sensors():
             "ph": record["ph"],
             "tds": record["tds"],
             "turbidity": record["turbidity"],
-            "time": str(
-                record["_time"]
-            )
+            "time": str(record["_time"])
         })
 
-    zones.sort(
-        key=lambda zone: zone["zone"]
-    )
-
-    return {
-        "zones": zones
-    }
+    zones.sort(key=lambda zone: zone["zone"])
+    return {"zones": zones}
 
 
-@app.get("/sensors/history")
-def sensor_history():
+@app.get("/sensors/latest")
+def latest_sensors():
+    global _latest_cache, _latest_cache_time
+
+    now = time.monotonic()
+    if (
+        _latest_cache is not None
+        and (now - _latest_cache_time) < LATEST_CACHE_TTL
+    ):
+        return _latest_cache
+
+    # Prevent simultaneous frontend requests from all hitting InfluxDB.
+    with _latest_cache_lock:
+        now = time.monotonic()
+        if (
+            _latest_cache is not None
+            and (now - _latest_cache_time) < LATEST_CACHE_TTL
+        ):
+            return _latest_cache
+
+        try:
+            result = _query_latest_sensors_uncached()
+            _latest_cache = result
+            _latest_cache_time = time.monotonic()
+            return result
+        except Exception:
+            # Keep the dashboard usable during a temporary InfluxDB 429.
+            if _latest_cache is not None:
+                return _latest_cache
+            raise
+
+
+def _query_history_uncached():
 
     query = f'''
     from(bucket: "{INFLUX_BUCKET}")
@@ -241,63 +246,58 @@ def sensor_history():
     )
 
     history = []
-
     for table in tables:
-
         for record in table.records:
-
             values = record.values
-
-            device_id = values.get(
-                "device_id"
-            )
+            device_id = values.get("device_id")
 
             if device_id not in DEVICE_ZONE_MAP:
                 continue
 
             history.append({
-                "time": str(
-                    values.get("_time")
-                ),
-
+                "time": str(values.get("_time")),
                 "device_id": device_id,
-
-                "zone": DEVICE_ZONE_MAP[
-                    device_id
-                ],
-
-                "stage": values.get(
-                    "stage"
-                ),
-
-                "pressure": values.get(
-                    "pressure"
-                ),
-
-                "flow": values.get(
-                    "flow"
-                ),
-
-                "acoustic": values.get(
-                    "acoustic"
-                ),
-
-                "ph": values.get(
-                    "ph"
-                ),
-
-                "tds": values.get(
-                    "tds"
-                ),
-
-                "turbidity": values.get(
-                    "turbidity"
-                )
+                "zone": DEVICE_ZONE_MAP[device_id],
+                "stage": values.get("stage"),
+                "pressure": values.get("pressure"),
+                "flow": values.get("flow"),
+                "acoustic": values.get("acoustic"),
+                "ph": values.get("ph"),
+                "tds": values.get("tds"),
+                "turbidity": values.get("turbidity")
             })
 
-    return {
-        "data": history
-    }
+    return {"data": history}
+
+
+@app.get("/sensors/history")
+def sensor_history():
+    global _history_cache, _history_cache_time
+
+    now = time.monotonic()
+    if (
+        _history_cache is not None
+        and (now - _history_cache_time) < HISTORY_CACHE_TTL
+    ):
+        return _history_cache
+
+    with _history_cache_lock:
+        now = time.monotonic()
+        if (
+            _history_cache is not None
+            and (now - _history_cache_time) < HISTORY_CACHE_TTL
+        ):
+            return _history_cache
+
+        try:
+            result = _query_history_uncached()
+            _history_cache = result
+            _history_cache_time = time.monotonic()
+            return result
+        except Exception:
+            if _history_cache is not None:
+                return _history_cache
+            raise
 
 
 @app.post("/analytics/analyze")
