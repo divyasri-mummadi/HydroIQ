@@ -514,11 +514,14 @@ def calculate_risk_score(
     # CONFIRMED LEAK FLOOR
     # ============================================================
     #
-    # If a leak is detected, the zone cannot be classified
-    # as Low risk.
+    # A LEAK condition from the HydroIQ analytics stage is itself
+    # sufficient to place the zone in the high-risk band.
+    #
+    # This is important because the incoming Wokwi stage may be
+    # LEAK even when leak_detected is not separately populated.
     # ============================================================
 
-    if leak_detected:
+    if leak_detected or condition == "LEAK":
 
         wrs = max(
             wrs,

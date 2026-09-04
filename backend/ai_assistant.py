@@ -31,7 +31,7 @@ if GEMINI_API_KEY:
     gemini_client = genai.Client(
         api_key=GEMINI_API_KEY,
         http_options=types.HttpOptions(
-            timeout=30000
+            timeout=60000
         ),
     )
 
@@ -364,7 +364,7 @@ def clean_conversation(conversation: Optional[list]) -> list:
 
     cleaned = []
 
-    for item in conversation[-8:]:
+    for item in conversation[-6:]:
         if not isinstance(item, dict):
             continue
 
@@ -374,7 +374,7 @@ def clean_conversation(conversation: Optional[list]) -> list:
         if role in {"user", "assistant"} and text:
             cleaned.append({
                 "role": role,
-                "text": str(text)[:1200],
+                "text": str(text)[:800],
             })
 
     return cleaned
@@ -496,7 +496,7 @@ def ai_chat(request: AIChatRequest):
             model=GEMINI_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
-                max_output_tokens=300,
+                max_output_tokens=220,
                 thinking_config=types.ThinkingConfig(
                     thinking_level="minimal"
                 ),
@@ -525,6 +525,10 @@ def ai_chat(request: AIChatRequest):
         print("===================================")
 
         return AIChatResponse(
-            response=error_message,
-            status="gemini_error",
+            response=(
+                "HydroIQ AI is temporarily unavailable because the Gemini "
+                "request timed out. Live telemetry and analytics are still "
+                "available. Please retry in a few seconds."
+            ),
+            status="gemini_timeout",
         )
