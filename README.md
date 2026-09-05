@@ -70,7 +70,7 @@ Integrates with n8n to trigger automated operational workflows and notifications
 
 ## System Architecture
 
-```text
+
                     ┌─────────────────────┐
                     │    IoT Sensor Nodes │
                     │    ESP32 / Wokwi    │
@@ -115,7 +115,6 @@ Integrates with n8n to trigger automated operational workflows and notifications
        │ • Risk & Maintenance│
        │ • AI Insights       │
        └─────────────────────┘
-
 
 
 ## Technology Stack
