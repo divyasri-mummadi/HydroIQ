@@ -202,20 +202,20 @@ HydroIQ/
 ## Monitored Zones
 
 HydroIQ currently supports four monitored zones:
-
+```
 Device	      Zone
 ESP32_Node_1	Zone_A
 ESP32_Node_2	Zone_B
 ESP32_Node_3	Zone_C
 ESP32_Node_4	Zone_D
-
+```
 Each zone can have its own sensor readings, network condition, risk score, priority, and operational context.
 
 
 ## Network Conditions
 
 HydroIQ classifies network conditions into multiple states:
-
+```
 Condition	                Description
 NORMAL            	Network operating normally
 EARLY_ANOMALY	      Early abnormal behaviour detected
@@ -223,7 +223,7 @@ LEAK	              Multiple signals indicate a potential leak
 WATER_QUALITY	      Water-quality parameters require attention
 SENSOR_FAULT	      Sensor readings require investigation
 CRITICAL	          High-severity network condition
-
+```
 
 ## Water Risk Score
 
@@ -285,23 +285,23 @@ Leak Detection    Water Quality
 HydroIQ does not rely on a single sensor reading.
 
 Potential leaks are identified using combined evidence such as:
-
+```
 Abnormal pressure
 Abnormal flow
 Increased acoustic activity
 Overall network condition
-
+```
 This multi-signal approach is designed to reduce false alarms and provide stronger evidence for operational decisions.
 
 
 ## Water Quality Analysis
 
 HydroIQ monitors:
-
+```
 pH
 TDS
 Turbidity
-
+```
 These measurements are combined to determine the water-quality condition of each monitored zone.
 
 The result is surfaced directly on the dashboard so operators can quickly identify zones requiring attention.
@@ -347,7 +347,7 @@ The AI layer uses current network analytics and sensor information to provide op
 
 ## Dashboard Modules
 
-Overview
+### Overview
 
 Provides a high-level view of:
 
@@ -355,35 +355,36 @@ Network risk
 Active alerts
 Monitored zones
 Current network conditions
-Network Map
+
+### Network Map
 
 Visualizes monitored zones and network status.
 
-Leak Detection
+### Leak Detection
 
 Displays leak-related evidence and affected zones.
 
-Water Quality
+### Water Quality
 
 Displays water-quality conditions and sensor measurements.
 
-Alerts
+### Alerts
 
 Shows active incidents, severity, WRS, affected zone, and recommended action.
 
-Risk & Maintenance
+### Risk & Maintenance
 
 Helps operators prioritize maintenance activities.
 
-AI Insights
+### AI Insights
 
 Provides natural-language network intelligence.
 
-Leak Localization
+### Leak Localization
 
 Supports identification of the affected network zone.
 
-Sensors & Devices
+### Sensors & Devices
 
 Displays monitored sensor nodes and telemetry.
 
@@ -411,20 +412,20 @@ Faster detection and better maintenance decisions
 ## Validation
 
 The prototype can be validated by testing controlled scenarios such as:
-
+```
 Normal network operation
 Early network anomaly
 Pipeline leak
 Water-quality deterioration
 Sensor fault
-
+```
 For each scenario, the system evaluates whether the corresponding condition, risk score, priority, and recommended action are correctly generated.
 
 
 ## Real-World Deployment
 
 A real-world deployment would require:
-
+```
 Distributed sensor nodes
 Reliable wireless communication
 Secure MQTT infrastructure
@@ -433,7 +434,7 @@ Network/GIS integration
 Utility-specific thresholds
 Field validation and calibration
 Integration with existing water-management systems
-
+```
 The architecture is designed to allow the prototype to evolve from simulation to real-world IoT deployment.
 
 
