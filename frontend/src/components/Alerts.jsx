@@ -7,46 +7,14 @@ import {
   Droplets
 } from 'lucide-react';
 
-const API_BASE = 'http://127.0.0.1:8001';
-
 export default function Alerts() {
   const [analysis, setAnalysis] = useState(null);
-  const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const loadDashboardData = async () => {
     try {
-      const [analyticsData, alertsResponse] = await Promise.all([
-        fetchLatestAnalytics(),
-        fetch(`${API_BASE}/api/alerts`)
-      ]);
-
+      const analyticsData = await fetchLatestAnalytics();
       setAnalysis(analyticsData);
-
-      if (alertsResponse.ok) {
-        const alertsData = await alertsResponse.json();
-
-        const incomingAlerts = alertsData.alerts || [];
-
-        /*
-         * n8n may send the same incident repeatedly.
-         * Keep only the latest alert for each
-         * zone + condition + priority combination.
-         */
-        const uniqueAlerts = new Map();
-
-        incomingAlerts.forEach((alert) => {
-          const key = [
-            alert?.zone || 'unknown',
-            alert?.condition || 'UNKNOWN',
-            alert?.priority || 'NONE'
-          ].join('-');
-
-          uniqueAlerts.set(key, alert);
-        });
-
-        setAlerts(Array.from(uniqueAlerts.values()));
-      }
     } catch (error) {
       console.error('Alerts dashboard error:', error);
     } finally {
@@ -87,34 +55,108 @@ export default function Alerts() {
     );
   }
 
-  const zones = analysis.zones || [];
+  const zones = Array.isArray(analysis?.zones)
+    ? analysis.zones
+    : [];
+
+  /*
+   * ==========================================================
+   * SINGLE SOURCE OF TRUTH FOR ACTIVE ALERTS
+   * ==========================================================
+   *
+   * A zone is considered an active alert when:
+   *
+   * - LEAK
+   * - SENSOR_FAULT
+   * - EARLY_ANOMALY
+   * - WATER_QUALITY
+   * - CRITICAL
+   * - Leak explicitly detected
+   * - WRS >= 35
+   *
+   * This is intentionally derived from analytics.zones
+   * so Overview and Alerts always agree.
+   */
+  const activeAlerts = zones.filter((zone) => {
+    const condition =
+      String(
+        zone?.stage ||
+        zone?.condition?.condition ||
+        'NORMAL'
+      ).toUpperCase();
+
+    const risk = Number(
+      zone?.risk?.score ??
+      zone?.risk?.wrs ??
+      0
+    );
+
+    const leakDetected =
+      zone?.leak?.leak_detected === true;
+
+    return (
+      leakDetected ||
+      condition !== 'NORMAL' ||
+      risk >= 35
+    );
+  });
 
   const highestRisk = zones.reduce(
-    (highest, zone) =>
-      Math.max(
+    (highest, zone) => {
+      const risk = Number(
+        zone?.risk?.score ??
+        zone?.risk?.wrs ??
+        0
+      );
+
+      return Math.max(
         highest,
-        Number(zone?.risk?.score) || 0
-      ),
+        Number.isFinite(risk) ? risk : 0
+      );
+    },
     0
   );
 
-  const getAlertType = (alert) => {
-    const condition =
-      String(alert?.condition || '').toUpperCase();
+  const getCondition = (zone) => {
+    return String(
+      zone?.stage ||
+      zone?.condition?.condition ||
+      'NORMAL'
+    ).toUpperCase();
+  };
 
-    const priority =
-      String(alert?.priority || '').toUpperCase();
+  const getPriority = (zone) => {
+    return (
+      zone?.priority?.priority ||
+      null
+    );
+  };
+
+  const getAlertType = (zone) => {
+    const condition = getCondition(zone);
+    const priority = String(
+      getPriority(zone) || ''
+    ).toUpperCase();
+
+    const risk = Number(
+      zone?.risk?.score ??
+      zone?.risk?.wrs ??
+      0
+    );
 
     if (
       condition === 'LEAK' ||
-      priority === 'P1'
+      condition === 'CRITICAL' ||
+      priority === 'P1' ||
+      risk >= 70
     ) {
       return 'CRITICAL';
     }
 
     if (
+      condition === 'SENSOR_FAULT' ||
       priority === 'P2' ||
-      condition === 'SENSOR_FAULT'
+      risk >= 60
     ) {
       return 'HIGH';
     }
@@ -122,41 +164,48 @@ export default function Alerts() {
     return 'MEDIUM';
   };
 
-  const getAlertTitle = (alert) => {
-    const zone = alert?.zone || 'Unknown Zone';
+  const getAlertTitle = (zone) => {
+    const zoneName =
+      zone?.zone || 'Unknown Zone';
 
     const condition =
-      String(alert?.condition || '').toUpperCase();
+      getCondition(zone);
 
     if (condition === 'LEAK') {
-      return `Pipeline Leak Detected — ${zone}`;
+      return `Pipeline Leak Detected — ${zoneName}`;
     }
 
     if (condition === 'EARLY_ANOMALY') {
-      return `Early Network Anomaly — ${zone}`;
+      return `Early Network Anomaly — ${zoneName}`;
     }
 
     if (condition === 'WATER_QUALITY') {
-      return `Water Quality Warning — ${zone}`;
+      return `Water Quality Warning — ${zoneName}`;
     }
 
     if (condition === 'SENSOR_FAULT') {
-      return `Sensor Fault — ${zone}`;
+      return `Sensor Fault — ${zoneName}`;
     }
 
-    return `Network Alert — ${zone}`;
+    if (condition === 'CRITICAL') {
+      return `Critical Network Condition — ${zoneName}`;
+    }
+
+    return `Network Alert — ${zoneName}`;
   };
 
-  const getAlertMessage = (alert) => {
-    if (alert?.recommended_action) {
-      return alert.recommended_action;
+  const getAlertMessage = (zone) => {
+    if (
+      zone?.priority?.recommended_action
+    ) {
+      return zone.priority.recommended_action;
     }
 
     const condition =
-      String(alert?.condition || '').toUpperCase();
+      getCondition(zone);
 
     if (condition === 'LEAK') {
-      return 'Multiple sensor signals indicate a possible pipeline leak.';
+      return 'Multiple sensor signals indicate a possible pipeline leak. Immediate inspection and isolation is recommended.';
     }
 
     if (condition === 'EARLY_ANOMALY') {
@@ -171,22 +220,25 @@ export default function Alerts() {
       return 'One or more sensors require inspection or recalibration.';
     }
 
+    if (condition === 'CRITICAL') {
+      return 'A critical network condition requires immediate attention.';
+    }
+
     return 'Investigate the affected zone.';
   };
 
-  const getIcon = (alert) => {
+  const getIcon = (zone) => {
     const condition =
-      String(alert?.condition || '').toUpperCase();
+      getCondition(zone);
 
     if (condition === 'WATER_QUALITY') {
       return Droplets;
     }
 
-    if (condition === 'EARLY_ANOMALY') {
-      return Activity;
-    }
-
-    if (condition === 'SENSOR_FAULT') {
+    if (
+      condition === 'EARLY_ANOMALY' ||
+      condition === 'SENSOR_FAULT'
+    ) {
       return Activity;
     }
 
@@ -208,7 +260,10 @@ export default function Alerts() {
   return (
     <div className="p-6 space-y-6">
 
-      {/* Header */}
+      {/* =====================================================
+          HEADER
+      ====================================================== */}
+
       <div className="flex justify-between items-center">
 
         <div>
@@ -227,8 +282,14 @@ export default function Alerts() {
 
       </div>
 
-      {/* Summary */}
+
+      {/* =====================================================
+          SUMMARY
+      ====================================================== */}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        {/* ACTIVE ALERTS */}
 
         <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
 
@@ -238,15 +299,18 @@ export default function Alerts() {
 
           <p
             className={`text-3xl font-bold mt-2 ${
-              alerts.length > 0
+              activeAlerts.length > 0
                 ? 'text-red-400'
                 : 'text-accentTeal'
             }`}
           >
-            {alerts.length}
+            {activeAlerts.length}
           </p>
 
         </div>
+
+
+        {/* HIGHEST RISK */}
 
         <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
 
@@ -255,13 +319,19 @@ export default function Alerts() {
           </p>
 
           <p className="text-3xl font-bold mt-2 text-warningOrange">
+
             {highestRisk}
+
             <span className="text-sm text-gray-500">
               /100
             </span>
+
           </p>
 
         </div>
+
+
+        {/* MONITORED ZONES */}
 
         <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
 
@@ -277,7 +347,11 @@ export default function Alerts() {
 
       </div>
 
-      {/* Alerts */}
+
+      {/* =====================================================
+          ACTIVE ALERTS
+      ====================================================== */}
+
       <div className="bg-cardBg p-5 rounded-xl border border-gray-800">
 
         <div className="flex justify-between items-center mb-5">
@@ -287,18 +361,22 @@ export default function Alerts() {
           </h3>
 
           <span className="text-xs text-gray-500">
-            Powered by HydroIQ Automation
+            Powered by HydroIQ Analytics
           </span>
 
         </div>
 
-        {alerts.length === 0 ? (
+
+        {/* NO ALERTS */}
+
+        {activeAlerts.length === 0 ? (
 
           <div className="flex items-center gap-3 p-5 rounded-lg bg-accentTeal/5 border border-accentTeal/20">
 
             <CheckCircle2 className="w-6 h-6 text-accentTeal" />
 
             <div>
+
               <p className="font-semibold text-accentTeal">
                 No Active Alerts
               </p>
@@ -306,6 +384,7 @@ export default function Alerts() {
               <p className="text-sm text-gray-400 mt-1">
                 HydroIQ is not detecting any immediate network issues.
               </p>
+
             </div>
 
           </div>
@@ -314,27 +393,42 @@ export default function Alerts() {
 
           <div className="space-y-4">
 
-            {alerts.map((alert, index) => {
+            {activeAlerts.map((zone, index) => {
 
-              const type = getAlertType(alert);
-              const Icon = getIcon(alert);
+              const type =
+                getAlertType(zone);
 
-              const zone =
-                alert?.zone || 'Unknown';
+              const Icon =
+                getIcon(zone);
+
+              const zoneName =
+                zone?.zone || 'Unknown';
 
               const device =
-                alert?.device_id || 'Unknown';
+                zone?.device_id || 'Unknown';
 
-              const risk =
-                Number(alert?.risk);
+              const risk = Number(
+                zone?.risk?.score ??
+                zone?.risk?.wrs ??
+                0
+              );
+
+              const priority =
+                getPriority(zone);
+
+              const condition =
+                getCondition(zone);
 
               return (
+
                 <div
-                  key={`${zone}-${alert?.condition}-${alert?.priority}-${index}`}
+                  key={`${zoneName}-${condition}-${index}`}
                   className="p-4 rounded-xl border border-gray-800 bg-gray-900/40"
                 >
 
                   <div className="flex items-start gap-4">
+
+                    {/* ICON */}
 
                     <div
                       className={`p-3 rounded-lg border ${typeClass(
@@ -344,6 +438,9 @@ export default function Alerts() {
                       <Icon className="w-6 h-6" />
                     </div>
 
+
+                    {/* CONTENT */}
+
                     <div className="flex-1">
 
                       <div className="flex justify-between items-start gap-4">
@@ -351,14 +448,17 @@ export default function Alerts() {
                         <div>
 
                           <h4 className="font-semibold text-lg">
-                            {getAlertTitle(alert)}
+                            {getAlertTitle(zone)}
                           </h4>
 
                           <p className="text-sm text-gray-400 mt-1">
-                            {getAlertMessage(alert)}
+                            {getAlertMessage(zone)}
                           </p>
 
                         </div>
+
+
+                        {/* SEVERITY */}
 
                         <span
                           className={`px-2 py-1 rounded text-xs font-bold border ${typeClass(
@@ -370,6 +470,9 @@ export default function Alerts() {
 
                       </div>
 
+
+                      {/* META */}
+
                       <div className="flex flex-wrap gap-6 mt-4 text-xs text-gray-500">
 
                         <span>
@@ -379,28 +482,37 @@ export default function Alerts() {
                           </strong>
                         </span>
 
+
                         <span>
                           Zone:{' '}
                           <strong className="text-gray-300">
-                            {zone}
+                            {zoneName}
                           </strong>
                         </span>
 
-                        {Number.isFinite(risk) && (
-                          <span>
-                            WRS:{' '}
-                            <strong className="text-gray-300">
-                              {risk}/100
-                            </strong>
-                          </span>
-                        )}
 
-                        {alert?.priority && (
+                        <span>
+                          WRS:{' '}
+                          <strong className="text-gray-300">
+                            {risk}/100
+                          </strong>
+                        </span>
+
+
+                        <span>
+                          Condition:{' '}
+                          <strong className="text-gray-300">
+                            {condition}
+                          </strong>
+                        </span>
+
+
+                        {priority && (
                           <span>
                             Priority:{' '}
                             <strong className="text-red-400">
                               {String(
-                                alert.priority
+                                priority
                               ).toUpperCase()}
                             </strong>
                           </span>
@@ -413,6 +525,7 @@ export default function Alerts() {
                   </div>
 
                 </div>
+
               );
             })}
 

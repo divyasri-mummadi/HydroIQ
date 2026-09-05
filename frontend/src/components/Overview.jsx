@@ -28,7 +28,7 @@ const numberValue = (value, fallback = 0) => {
 
 
 // ============================================================
-// DEVICE → ZONE MAPPING
+// DEVICE → ZONE
 // ============================================================
 
 const DEVICE_ZONE_MAP = {
@@ -38,10 +38,6 @@ const DEVICE_ZONE_MAP = {
   ESP32_Node_4: 'Zone_D',
 };
 
-
-// ============================================================
-// NORMALIZE ZONE
-// ============================================================
 
 const normalizeZone = (zone, index = 0) => {
   const deviceId =
@@ -72,7 +68,7 @@ const normalizeZone = (zone, index = 0) => {
 
 
 // ============================================================
-// NORMALIZE ANALYTICS RESPONSE
+// ANALYTICS NORMALIZATION
 // ============================================================
 
 const normalizeAnalytics = (response) => {
@@ -80,7 +76,6 @@ const normalizeAnalytics = (response) => {
     return [];
   }
 
-  // Backend returns multiple zones
   if (Array.isArray(response)) {
     return response;
   }
@@ -89,7 +84,6 @@ const normalizeAnalytics = (response) => {
     return response.zones;
   }
 
-  // Backend currently returns one analytics object
   if (
     response.device_id ||
     response.sensor_data ||
@@ -101,6 +95,7 @@ const normalizeAnalytics = (response) => {
 
   return [];
 };
+
 
 // ============================================================
 // SENSOR VALUES
@@ -163,24 +158,27 @@ const getCondition = (zone) => {
 
 
 // ============================================================
-// PROBLEM DETECTION
+// PROBLEM ZONE
 //
 // IMPORTANT:
-// NORMAL ZONES = NO PRIORITY
+// This is the SINGLE source used by Overview.
 //
-// Problem if:
-// - condition is not NORMAL
+// A zone is an alert when:
+// - condition != NORMAL
 // - leak detected
-// - poor water quality
 // - risk > 0
-// - sensor health < 90
+// - poor water quality
+// - unhealthy sensor
+//
+// PRIORITY IS NOT REQUIRED.
 // ============================================================
 
 const isProblemZone = (zone) => {
   const condition = getCondition(zone);
 
   const risk = numberValue(
-    zone?.risk?.score
+    zone?.risk?.score ??
+    zone?.risk?.wrs
   );
 
   const leakDetected =
@@ -189,11 +187,10 @@ const isProblemZone = (zone) => {
   const qualityStatus =
     zone?.water_quality?.status;
 
-  const sensorHealth =
-    numberValue(
-      zone?.sensor_health?.overall_score,
-      100
-    );
+  const sensorHealth = numberValue(
+    zone?.sensor_health?.overall_score,
+    100
+  );
 
   return (
     condition !== 'NORMAL' ||
@@ -207,9 +204,6 @@ const isProblemZone = (zone) => {
 
 // ============================================================
 // PRIORITY
-//
-// BACKEND IS THE ONLY SOURCE OF PRIORITY.
-// FRONTEND DOES NOT CREATE P1/P2/P3/P4/P5.
 // ============================================================
 
 const getPriority = (zone) => {
@@ -220,10 +214,6 @@ const getPriority = (zone) => {
   return zone?.priority || null;
 };
 
-
-// ============================================================
-// PRIORITY ORDER
-// ============================================================
 
 const priorityRank = {
   P1: 1,
@@ -241,18 +231,14 @@ const priorityRank = {
 const getStatusClass = (condition) => {
   switch (condition) {
     case 'LEAK':
-      return 'text-red-400';
-
     case 'CRITICAL':
       return 'text-red-400';
 
     case 'SENSOR_FAULT':
       return 'text-orange-400';
 
-    case 'WATER_QUALITY':
-      return 'text-yellow-400';
-
     case 'EARLY_ANOMALY':
+    case 'WATER_QUALITY':
       return 'text-yellow-400';
 
     default:
@@ -264,18 +250,14 @@ const getStatusClass = (condition) => {
 const getStatusBg = (condition) => {
   switch (condition) {
     case 'LEAK':
-      return 'bg-red-500/15 border-red-500/30';
-
     case 'CRITICAL':
       return 'bg-red-500/15 border-red-500/30';
 
     case 'SENSOR_FAULT':
       return 'bg-orange-500/15 border-orange-500/30';
 
-    case 'WATER_QUALITY':
-      return 'bg-yellow-500/15 border-yellow-500/30';
-
     case 'EARLY_ANOMALY':
+    case 'WATER_QUALITY':
       return 'bg-yellow-500/15 border-yellow-500/30';
 
     default:
@@ -283,10 +265,6 @@ const getStatusBg = (condition) => {
   }
 };
 
-
-// ============================================================
-// PRIORITY COLORS
-// ============================================================
 
 const getPriorityClass = (priority) => {
   switch (priority) {
@@ -353,15 +331,14 @@ const normalizeHistory = (response, selectedZone) => {
         item?.time ||
         item?._time;
 
-      const parsedTime =
-        rawTime
-          ? new Date(rawTime).getTime()
-          : Date.now() - (raw.length - index) * 3000;
+      const timestamp = rawTime
+        ? new Date(rawTime).getTime()
+        : Date.now() - (raw.length - index) * 3000;
 
       return {
-        timestamp: Number.isFinite(parsedTime)
-          ? parsedTime
-          : Date.now() - (raw.length - index) * 3000,
+        timestamp: Number.isFinite(timestamp)
+          ? timestamp
+          : Date.now(),
 
         zone,
 
@@ -392,10 +369,7 @@ const normalizeHistory = (response, selectedZone) => {
 
       return item.zone === selectedZone;
     })
-    .sort(
-      (a, b) =>
-        a.timestamp - b.timestamp
-    )
+    .sort((a, b) => a.timestamp - b.timestamp)
     .slice(-60);
 };
 
@@ -419,7 +393,6 @@ const ChartTooltip = ({
 
   return (
     <div className="bg-[#131F2E] border border-gray-700 rounded-lg px-4 py-3 shadow-xl">
-
       <p className="text-gray-300 text-sm mb-2">
         {new Date(label).toLocaleTimeString()}
       </p>
@@ -438,7 +411,6 @@ const ChartTooltip = ({
           </span>
         </p>
       ))}
-
     </div>
   );
 };
@@ -449,75 +421,55 @@ const ChartTooltip = ({
 // ============================================================
 
 export default function Overview() {
-
   const [zones, setZones] = useState([]);
-
-  const [selectedGraphZone, setSelectedGraphZone] =
-    useState('Zone_A');
-
-  const [historyData, setHistoryData] =
-    useState([]);
-
-  const [networkData, setNetworkData] =
-  useState(null);
+  const [historyData, setHistoryData] = useState([]);
+  const [networkData, setNetworkData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
 
 
   // ==========================================================
-  // FETCH ANALYTICS
+  // LOAD ANALYTICS
   // ==========================================================
 
   useEffect(() => {
-
     let mounted = true;
 
     const loadData = async () => {
-
       try {
+        let analytics = null;
 
-        /*
-         * Analytics already contains:
-         *
-         * sensor_data
-         * leak
-         * water_quality
-         * condition
-         * sensor_health
-         * risk
-         * priority
-         * device_id
-         * zone
-         *
-         * Therefore we use analytics as the main source.
-         */
+        try {
+          analytics = await fetchLatestAnalytics();
+        } catch (error) {
+          console.error(
+            'Analytics request failed:',
+            error
+          );
+        }
 
-        const analytics =
-  await fetchLatestAnalytics();
+        if (analytics?.network) {
+          setNetworkData(
+            analytics.network
+          );
+        }
 
-if (analytics?.network) {
-  setNetworkData(analytics.network);
-}
+        let analyticsZones =
+          normalizeAnalytics(analytics);
 
-let analyticsZones =
-  normalizeAnalytics(analytics);
 
         // ------------------------------------------------------
-        // FALLBACK TO SENSOR DATA IF ANALYTICS FAILS
+        // FALLBACK TO SENSOR DATA
         // ------------------------------------------------------
 
-        if (
-          analyticsZones.length === 0
-        ) {
-
-          const sensorData =
-            await fetchLatestSensorData();
-
-          if (sensorData) {
+        if (analyticsZones.length === 0) {
+          try {
+            const sensorData =
+              await fetchLatestSensorData();
 
             if (
               Array.isArray(
-                sensorData.zones
+                sensorData?.zones
               )
             ) {
               analyticsZones =
@@ -527,25 +479,27 @@ let analyticsZones =
             ) {
               analyticsZones =
                 sensorData;
-            } else {
+            } else if (sensorData) {
               analyticsZones = [
                 sensorData
               ];
             }
-
+          } catch (error) {
+            console.error(
+              'Sensor fallback failed:',
+              error
+            );
           }
-
         }
 
 
         // ------------------------------------------------------
-        // NORMALIZE ZONES
+        // NORMALIZE
         // ------------------------------------------------------
 
         const normalizedZones =
           analyticsZones.map(
             (zone, index) => {
-
               const deviceId =
                 zone?.device_id ||
                 zone?.deviceId ||
@@ -563,13 +517,12 @@ let analyticsZones =
                 device_id:
                   deviceId,
               };
-
             }
           );
 
 
         // ------------------------------------------------------
-        // CANONICAL ORDER
+        // CANONICAL A → D ORDER
         // ------------------------------------------------------
 
         const zoneOrder = {
@@ -581,133 +534,112 @@ let analyticsZones =
           Zone_F: 6,
         };
 
-
         normalizedZones.sort(
           (a, b) =>
-            (zoneOrder[a.zone] || 999) -
-            (zoneOrder[b.zone] || 999)
+            (
+              zoneOrder[a.zone] ||
+              999
+            ) -
+            (
+              zoneOrder[b.zone] ||
+              999
+            )
         );
 
 
         if (mounted) {
-
-          setZones(
-            normalizedZones
-          );
-
-          setLastUpdated(
-            new Date()
-          );
-
+          setZones(normalizedZones);
+          setLastUpdated(new Date());
         }
 
       } catch (error) {
-
         console.error(
-          'HydroIQ analytics error:',
+          'HydroIQ overview error:',
           error
         );
-
       } finally {
-
         if (mounted) {
           setLoading(false);
         }
-
       }
-
     };
 
 
     loadData();
 
-
-    // Refresh every 3 seconds.
-
+    // Refresh analytics every 3 seconds.
     const interval =
       setInterval(
         loadData,
         3000
       );
 
-
     return () => {
-
       mounted = false;
-
       clearInterval(interval);
-
     };
 
   }, []);
 
 
   // ==========================================================
-  // PROBLEM ZONES
+  // ACTIVE ALERTS
   //
-  // ONLY PROBLEM ZONES WITH BACKEND PRIORITY.
-  // NORMAL ZONES ARE NEVER SHOWN HERE.
+  // IMPORTANT FIX:
+  // NO priority requirement here.
+  //
+  // Therefore:
+  // Zone B EARLY_ANOMALY + priority null
+  // STILL COUNTS AS AN ALERT.
   // ==========================================================
 
-  const problemZones =
-    useMemo(() => {
+  const problemZones = useMemo(() => {
+    return zones
+      .filter(isProblemZone)
+      .sort((a, b) => {
 
-      return zones
-        .filter(
-          (zone) =>
-            isProblemZone(zone)
-        )
-        .filter(
-          (zone) =>
-            getPriority(zone) !== null
-        )
-        .sort(
-          (a, b) => {
+        const aPriority =
+          getPriority(a);
 
-            const aPriority =
-              getPriority(a);
+        const bPriority =
+          getPriority(b);
 
-            const bPriority =
-              getPriority(b);
+        const aRank =
+          priorityRank[
+            aPriority?.priority
+          ] || 999;
 
-
-            const aRank =
-              priorityRank[
-                aPriority?.priority
-              ] || 999;
-
-            const bRank =
-              priorityRank[
-                bPriority?.priority
-              ] || 999;
+        const bRank =
+          priorityRank[
+            bPriority?.priority
+          ] || 999;
 
 
-            if (
-              aRank !== bRank
-            ) {
-              return (
-                aRank - bRank
-              );
-            }
+        if (aRank !== bRank) {
+          return aRank - bRank;
+        }
 
 
-            return (
-              numberValue(
-                bPriority?.score
-              ) -
-              numberValue(
-                aPriority?.score
-              )
-            );
+        const aRisk =
+          numberValue(
+            a?.risk?.score ??
+            a?.risk?.wrs
+          );
 
-          }
-        );
+        const bRisk =
+          numberValue(
+            b?.risk?.score ??
+            b?.risk?.wrs
+          );
 
-    }, [zones]);
+        return bRisk - aRisk;
+      });
+
+  }, [zones]);
 
 
   // ==========================================================
-  // HIGHEST PRIORITY ZONE
+  // HIGHEST PRIORITY / ALERT ZONE
   // ==========================================================
 
   const highestPriorityZone =
@@ -721,241 +653,159 @@ let analyticsZones =
   // ==========================================================
 
   const graphZone =
-    zones.find(
-      (zone) => zone?.zone === selectedGraphZone
-    ) ||
+    highestPriorityZone ||
     zones[0] ||
     null;
 
   const graphZoneName =
     graphZone?.zone ||
-    selectedGraphZone ||
     'Network';
 
 
   // ==========================================================
-  // LOAD HISTORY
+  // HISTORY
   // ==========================================================
 
   useEffect(() => {
-
     if (!graphZoneName) {
       return;
     }
 
-
     let mounted = true;
 
+    const loadHistory = async () => {
+      try {
+        const response =
+          await fetchSensorHistory();
 
-    const loadHistory =
-      async () => {
-
-        try {
-
-          const response =
-            await fetchSensorHistory();
-
-
-          if (!mounted) {
-            return;
-          }
-
-
-          const normalized =
-            normalizeHistory(
-              response,
-              graphZoneName
-            );
-
-
-          setHistoryData(
-            normalized
-          );
-
-        } catch (error) {
-
-          console.error(
-            'HydroIQ history error:',
-            error
-          );
-
+        if (!mounted) {
+          return;
         }
 
-      };
+        const normalized =
+          normalizeHistory(
+            response,
+            graphZoneName
+          );
+
+        setHistoryData(normalized);
+
+      } catch (error) {
+        console.error(
+          'HydroIQ history error:',
+          error
+        );
+      }
+    };
 
 
     loadHistory();
 
-
     const interval =
       setInterval(
         loadHistory,
-        3000
+        5000
       );
 
-
     return () => {
-
       mounted = false;
-
       clearInterval(interval);
-
     };
 
   }, [graphZoneName]);
 
 
   // ==========================================================
-  // LEAK WAVEFORM REALIGNMENT
-  // ==========================================================
-  // For an active LEAK zone, visually realign the trend so the
-  // pressure plunges by about 40% and flow surges at the leak onset.
-  // Normal zones continue to use the live history unchanged.
-  const trendData = useMemo(() => {
-    if (!historyData.length || getCondition(graphZone) !== 'LEAK') {
-      return historyData;
-    }
-
-    const transitionIndex = Math.max(0, historyData.length - 10);
-
-    return historyData.map((point, index) => {
-      if (index < transitionIndex) {
-        return point;
-      }
-
-      const steps = Math.max(1, historyData.length - transitionIndex - 1);
-      const progress = Math.min(1, (index - transitionIndex) / steps);
-
-      return {
-        ...point,
-        pressure: Number((numberValue(point.pressure) * (1 - 0.4 * progress)).toFixed(2)),
-        flow: Number((numberValue(point.flow) * (1 + 0.4 * progress)).toFixed(2)),
-      };
-    });
-  }, [historyData, graphZone]);
-
-  // ==========================================================
   // NETWORK STATISTICS
   // ==========================================================
 
-  const networkStats =
-    useMemo(() => {
+  const networkStats = useMemo(() => {
 
-      const activeAlerts =
-        zones.filter(
-          isProblemZone
-        );
-
-
-      const highestRisk = numberValue(
-  networkData?.risk_score,
-  0
-);
-
-      // ------------------------------------------------------
-      // ECONOMIC LOSS RUN-RATE
-      // ------------------------------------------------------
-      // Active LEAK zones only:
-      // estimated loss = WRS × 0.7 Liters/Min
-      // financial impact = estimated loss × ₹8.10 per hour
-      const leakZones = zones
-        .filter((zone) => getCondition(zone) === 'LEAK')
-        .sort(
-          (a, b) =>
-            numberValue(b?.risk?.score) -
-            numberValue(a?.risk?.score)
-        );
-
-      const economicImpactZone =
-        leakZones.length > 0 ? leakZones[0] : null;
-
-      const economicImpactWrs = economicImpactZone
-        ? numberValue(economicImpactZone?.risk?.score)
-        : 0;
-
-      const economicLossRate = economicImpactZone
-        ? economicImpactWrs * 0.7
-        : 0;
-
-      const economicFinancialLoss = economicImpactZone
-        ? economicLossRate * 8.10
-        : 0;
+    const activeAlerts =
+      zones.filter(
+        isProblemZone
+      );
 
 
-      // ------------------------------------------------------
-      // WATER QUALITY INDEX
-      // ------------------------------------------------------
-
-      const qualityScores =
-        zones.map((zone) => {
-
-          const quality =
-            zone?.water_quality;
-
-
-          if (!quality) {
-            return 100;
-          }
-
-
-          if (
-            quality.status ===
-            'Good'
-          ) {
-            return 100;
-          }
+    const highestRisk =
+      networkData?.risk_score !== undefined
+        ? numberValue(
+            networkData.risk_score
+          )
+        : zones.reduce(
+            (highest, zone) =>
+              Math.max(
+                highest,
+                numberValue(
+                  zone?.risk?.score ??
+                  zone?.risk?.wrs
+                )
+              ),
+            0
+          );
 
 
-          if (
-            quality.status ===
-            'Poor'
-          ) {
+    // --------------------------------------------------------
+    // WATER QUALITY INDEX
+    // --------------------------------------------------------
 
-            const issues =
-              Array.isArray(
-                quality.issues
-              )
-                ? quality.issues.length
-                : 1;
+    const qualityScores =
+      zones.map((zone) => {
 
-            return Math.max(
-              0,
-              100 -
-              issues * 20
-            );
+        const quality =
+          zone?.water_quality;
 
-          }
+        if (!quality) {
+          return 100;
+        }
 
+        if (
+          quality.status ===
+          'Good'
+        ) {
+          return 100;
+        }
 
-          return 80;
-
-        });
-
-
-      const waterQualityIndex =
-        qualityScores.length > 0
-          ? Math.round(
-              qualityScores.reduce(
-                (a, b) =>
-                  a + b,
-                0
-              ) /
-              qualityScores.length
+        if (
+          quality.status ===
+          'Poor'
+        ) {
+          const issues =
+            Array.isArray(
+              quality.issues
             )
-          : 100;
+              ? quality.issues.length
+              : 1;
+
+          return Math.max(
+            0,
+            100 - issues * 20
+          );
+        }
+
+        return 80;
+      });
 
 
-      return {
-        activeAlerts,
-        highestRisk,
-        waterQualityIndex,
-        economicImpactZone,
-        economicImpactWrs,
-        economicLossRate,
-        economicFinancialLoss,
-      };
+    const waterQualityIndex =
+      qualityScores.length > 0
+        ? Math.round(
+            qualityScores.reduce(
+              (a, b) => a + b,
+              0
+            ) /
+            qualityScores.length
+          )
+        : 100;
 
-    }, [zones,networkData]);
+
+    return {
+      activeAlerts,
+      highestRisk,
+      waterQualityIndex,
+    };
+
+  }, [zones, networkData]);
 
 
   // ==========================================================
@@ -963,13 +813,11 @@ let analyticsZones =
   // ==========================================================
 
   if (loading) {
-
     return (
       <div className="p-8 text-gray-400">
         Loading HydroIQ network...
       </div>
     );
-
   }
 
 
@@ -978,9 +826,7 @@ let analyticsZones =
   // ==========================================================
 
   return (
-
     <div className="p-6 space-y-6">
-
 
       {/* ======================================================
           HEADER
@@ -989,7 +835,6 @@ let analyticsZones =
       <div className="flex justify-between items-center">
 
         <div>
-
           <h1 className="text-3xl font-bold">
             Network Overview
           </h1>
@@ -997,7 +842,6 @@ let analyticsZones =
           <p className="text-gray-400 mt-1">
             Live HydroIQ network monitoring and analytics
           </p>
-
         </div>
 
 
@@ -1017,7 +861,6 @@ let analyticsZones =
             }
           `}
         >
-
           ●{' '}
 
           {highestPriorityZone
@@ -1025,7 +868,6 @@ let analyticsZones =
                 highestPriorityZone
               )
             : 'NORMAL'}
-
         </div>
 
       </div>
@@ -1036,7 +878,6 @@ let analyticsZones =
       ======================================================= */}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-
 
         {/* WATER RISK */}
 
@@ -1072,15 +913,6 @@ let analyticsZones =
           <p className="text-sm text-gray-500 mt-2">
             Highest current network risk
           </p>
-
-          {networkStats.economicImpactZone && (
-            <p className="text-sm font-semibold text-red-300 mt-3">
-              ⚠️ Financial Impact: Estimated ~
-              {Math.round(networkStats.economicLossRate)} Liters/Min Loss
-              {' '}
-              (~₹{Math.round(networkStats.economicFinancialLoss)}/hour loss rate)
-            </p>
-          )}
 
         </div>
 
@@ -1126,8 +958,7 @@ let analyticsZones =
               }
             `}
           >
-            {highestPriorityZone?.zone ||
-              'None'}
+            {highestPriorityZone?.zone || 'None'}
           </p>
 
           <p className="text-sm text-gray-500 mt-2">
@@ -1135,10 +966,16 @@ let analyticsZones =
             {highestPriorityZone
               ? `${getCondition(
                   highestPriorityZone
-                )} · ${
+                )}${
                   getPriority(
                     highestPriorityZone
-                  )?.priority || ''
+                  )?.priority
+                    ? ` · ${
+                        getPriority(
+                          highestPriorityZone
+                        ).priority
+                      }`
+                    : ''
                 }`
               : 'All zones normal'}
 
@@ -1157,7 +994,18 @@ let analyticsZones =
 
           <div className="mt-3">
 
-            <span className="text-4xl font-bold text-accentTeal">
+            <span
+              className={`
+                text-4xl font-bold
+                ${
+                  networkStats.waterQualityIndex >= 80
+                    ? 'text-accentTeal'
+                    : networkStats.waterQualityIndex >= 60
+                    ? 'text-yellow-400'
+                    : 'text-red-400'
+                }
+              `}
+            >
               {networkStats.waterQualityIndex}
             </span>
 
@@ -1210,7 +1058,6 @@ let analyticsZones =
 
           <div className="relative h-80 mt-6 bg-gray-950/40 rounded-xl border border-gray-800 overflow-hidden">
 
-
             {/* HORIZONTAL PIPE */}
 
             <div
@@ -1250,7 +1097,6 @@ let analyticsZones =
                 const problem =
                   isProblemZone(zone);
 
-
                 const positions = [
                   {
                     left: '25%',
@@ -1278,26 +1124,20 @@ let analyticsZones =
                   },
                 ];
 
-
                 const position =
                   positions[index];
-
 
                 if (!position) {
                   return null;
                 }
 
-
                 return (
-
                   <div
                     key={zone.zone}
                     className="absolute"
                     style={{
-                      left:
-                        position.left,
-                      top:
-                        position.top,
+                      left: position.left,
+                      top: position.top,
                     }}
                   >
 
@@ -1313,7 +1153,6 @@ let analyticsZones =
                         }
                       `}
                     />
-
 
                     <div className="bg-gray-900 border border-gray-700 rounded-lg px-4 py-2">
 
@@ -1335,9 +1174,7 @@ let analyticsZones =
                     </div>
 
                   </div>
-
                 );
-
               }
             )}
 
@@ -1381,15 +1218,14 @@ let analyticsZones =
 
                   const risk =
                     numberValue(
-                      zone?.risk?.score
+                      zone?.risk?.score ??
+                      zone?.risk?.wrs
                     );
 
                   const priority =
                     getPriority(zone);
 
-
                   return (
-
                     <div
                       key={zone.zone}
                       className="pb-4 border-b border-gray-800"
@@ -1401,6 +1237,8 @@ let analyticsZones =
                           className={
                             condition === 'LEAK'
                               ? 'text-red-400'
+                              : condition === 'SENSOR_FAULT'
+                              ? 'text-orange-400'
                               : 'text-yellow-400'
                           }
                         >
@@ -1411,13 +1249,9 @@ let analyticsZones =
                         <div>
 
                           <p className="font-semibold">
-
                             {condition}
-
                             {' — '}
-
                             {zone.zone}
-
                           </p>
 
 
@@ -1425,20 +1259,19 @@ let analyticsZones =
 
                             Risk {risk}/100
 
-                            {priority &&
-                              ` · ${priority.priority}`}
+                            {priority?.priority
+                              ? ` · ${priority.priority}`
+                              : ''}
 
                           </p>
 
 
                           <p className="text-xs text-gray-600 mt-2">
 
-                            {getCondition(zone) === 'LEAK' &&
-                            getSensorValues(zone).turbidity > 5.0
-                              ? '🚨 CRITICAL OUTBREAK RISK: Severe pipe rupture is actively pulling groundwater soil into the clean drinking supply. High contamination threat.'
-                              : zone?.condition?.reason ||
-                                zone?.leak?.reason ||
-                                'Attention required'}
+                            {zone?.condition?.reason ||
+                              zone?.leak?.reason ||
+                              zone?.priority?.recommended_action ||
+                              'Attention required'}
 
                           </p>
 
@@ -1447,9 +1280,7 @@ let analyticsZones =
                       </div>
 
                     </div>
-
                   );
-
                 }
               )
 
@@ -1483,13 +1314,10 @@ let analyticsZones =
           </div>
 
           <span className="text-gray-500">
-
             Updated{' '}
-
             {lastUpdated
               ? lastUpdated.toLocaleTimeString()
               : '--'}
-
           </span>
 
         </div>
@@ -1497,133 +1325,117 @@ let analyticsZones =
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-6">
 
-          {zones.map(
-            (zone) => {
+          {zones.map((zone) => {
 
-              const condition =
-                getCondition(zone);
+            const condition =
+              getCondition(zone);
 
-              const values =
-                getSensorValues(zone);
+            const values =
+              getSensorValues(zone);
+
+            return (
+              <div
+                key={zone.zone}
+                className={`
+                  p-5
+                  rounded-xl
+                  border
+                  ${getStatusBg(condition)}
+                `}
+              >
+
+                <div className="flex justify-between items-center">
+
+                  <p className="text-lg font-semibold">
+                    {zone.zone}
+                  </p>
+
+                  <span
+                    className={`
+                      text-xs
+                      px-3 py-1
+                      rounded-full
+                      ${getStatusClass(condition)}
+                      bg-gray-900/50
+                    `}
+                  >
+                    {condition}
+                  </span>
+
+                </div>
 
 
-              return (
+                <p className="text-sm text-gray-500 mt-2">
+                  {zone.device_id}
+                </p>
 
-                <div
-                  key={zone.zone}
-                  className={`
-                    p-5
-                    rounded-xl
-                    border
-                    ${getStatusBg(
-                      condition
-                    )}
-                  `}
-                >
 
-                  <div className="flex justify-between items-center">
+                <div className="space-y-2 mt-5 text-sm">
 
-                    <p className="text-lg font-semibold">
-                      {zone.zone}
-                    </p>
-
-                    <span
-                      className={`
-                        text-xs
-                        px-3 py-1
-                        rounded-full
-                        ${getStatusClass(
-                          condition
-                        )}
-                        bg-gray-900/50
-                      `}
-                    >
-                      {condition}
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">
+                      Pressure
                     </span>
-
+                    <span>
+                      {values.pressure} bar
+                    </span>
                   </div>
 
 
-                  <p className="text-sm text-gray-500 mt-2">
-                    {zone.device_id}
-                  </p>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">
+                      Flow
+                    </span>
+                    <span>
+                      {values.flow} L/min
+                    </span>
+                  </div>
 
 
-                  <div className="space-y-2 mt-5 text-sm">
-
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">
-                        Pressure
-                      </span>
-
-                      <span>
-                        {values.pressure} bar
-                      </span>
-                    </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">
+                      Acoustic
+                    </span>
+                    <span>
+                      {values.acoustic}
+                    </span>
+                  </div>
 
 
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">
-                        Flow
-                      </span>
-
-                      <span>
-                        {values.flow} L/min
-                      </span>
-                    </div>
-
-
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">
-                        Acoustic
-                      </span>
-
-                      <span>
-                        {values.acoustic}
-                      </span>
-                    </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">
+                      pH
+                    </span>
+                    <span>
+                      {values.ph}
+                    </span>
+                  </div>
 
 
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">
-                        pH
-                      </span>
-
-                      <span>
-                        {values.ph}
-                      </span>
-                    </div>
-
-
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">
-                        TDS
-                      </span>
-
-                      <span>
-                        {values.tds} mg/L
-                      </span>
-                    </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">
+                      TDS
+                    </span>
+                    <span>
+                      {values.tds} mg/L
+                    </span>
+                  </div>
 
 
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">
-                        Turbidity
-                      </span>
-
-                      <span>
-                        {values.turbidity} NTU
-                      </span>
-                    </div>
-
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">
+                      Turbidity
+                    </span>
+                    <span>
+                      {values.turbidity} NTU
+                    </span>
                   </div>
 
                 </div>
 
-              );
-
-            }
-          )}
+              </div>
+            );
+          })}
 
         </div>
 
@@ -1657,72 +1469,33 @@ let analyticsZones =
         </div>
 
 
-        {/* ZONE SELECTOR */}
-
-        <div className="flex flex-wrap gap-2 mt-5 mb-6">
-
-          {['Zone_A', 'Zone_B', 'Zone_C', 'Zone_D'].map(
-            (zoneName) => (
-
-              <button
-                key={zoneName}
-                type="button"
-                onClick={() => setSelectedGraphZone(zoneName)}
-                className={`
-                  px-4 py-2
-                  rounded-lg
-                  border
-                  text-sm
-                  font-semibold
-                  transition
-                  ${
-                    selectedGraphZone === zoneName
-                      ? 'bg-accentTeal/15 border-accentTeal/50 text-accentTeal'
-                      : 'bg-gray-900/30 border-gray-800 text-gray-400 hover:text-gray-200 hover:border-gray-600'
-                  }
-                `}
-              >
-                {zoneName}
-              </button>
-
-            )
-          )}
-
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mt-6">
 
 
-          {/* ==================================================
-              PRESSURE
-          =================================================== */}
+          {/* PRESSURE */}
 
           <div className="bg-gray-950/20 border border-gray-800 rounded-xl p-4">
 
-            <div className="mb-3">
+            <p className="text-gray-400">
+              Pressure
+            </p>
 
-              <p className="text-gray-400">
-                Pressure
-              </p>
+            <p className="text-2xl font-bold text-blue-400 mt-2">
 
-              <p className="text-2xl font-bold text-blue-400">
+              {graphZone
+                ? getSensorValues(
+                    graphZone
+                  ).pressure
+                : '--'}
 
-                {graphZone
-                  ? getSensorValues(
-                      graphZone
-                    ).pressure
-                  : '--'}
+              <span className="text-sm text-gray-500 ml-1">
+                bar
+              </span>
 
-                <span className="text-sm text-gray-500 ml-1">
-                  bar
-                </span>
-
-              </p>
-
-            </div>
+            </p>
 
 
-            <div className="h-56">
+            <div className="h-56 mt-3">
 
               <ResponsiveContainer
                 width="100%"
@@ -1730,7 +1503,7 @@ let analyticsZones =
               >
 
                 <LineChart
-                  data={trendData}
+                  data={historyData}
                 >
 
                   <CartesianGrid
@@ -1757,12 +1530,16 @@ let analyticsZones =
                       )
                     }
                     stroke="#6B7280"
-                    tick={{ fontSize: 11 }}
+                    tick={{
+                      fontSize: 11,
+                    }}
                   />
 
                   <YAxis
                     stroke="#6B7280"
-                    tick={{ fontSize: 11 }}
+                    tick={{
+                      fontSize: 11,
+                    }}
                     domain={[
                       'auto',
                       'auto',
@@ -1794,36 +1571,30 @@ let analyticsZones =
           </div>
 
 
-          {/* ==================================================
-              FLOW
-          =================================================== */}
+          {/* FLOW */}
 
           <div className="bg-gray-950/20 border border-gray-800 rounded-xl p-4">
 
-            <div className="mb-3">
+            <p className="text-gray-400">
+              Flow Rate
+            </p>
 
-              <p className="text-gray-400">
-                Flow Rate
-              </p>
+            <p className="text-2xl font-bold text-teal-400 mt-2">
 
-              <p className="text-2xl font-bold text-teal-400">
+              {graphZone
+                ? getSensorValues(
+                    graphZone
+                  ).flow
+                : '--'}
 
-                {graphZone
-                  ? getSensorValues(
-                      graphZone
-                    ).flow
-                  : '--'}
+              <span className="text-sm text-gray-500 ml-1">
+                L/min
+              </span>
 
-                <span className="text-sm text-gray-500 ml-1">
-                  L/min
-                </span>
-
-              </p>
-
-            </div>
+            </p>
 
 
-            <div className="h-56">
+            <div className="h-56 mt-3">
 
               <ResponsiveContainer
                 width="100%"
@@ -1831,7 +1602,7 @@ let analyticsZones =
               >
 
                 <LineChart
-                  data={trendData}
+                  data={historyData}
                 >
 
                   <CartesianGrid
@@ -1858,12 +1629,16 @@ let analyticsZones =
                       )
                     }
                     stroke="#6B7280"
-                    tick={{ fontSize: 11 }}
+                    tick={{
+                      fontSize: 11,
+                    }}
                   />
 
                   <YAxis
                     stroke="#6B7280"
-                    tick={{ fontSize: 11 }}
+                    tick={{
+                      fontSize: 11,
+                    }}
                     domain={[
                       'auto',
                       'auto',
@@ -1895,36 +1670,30 @@ let analyticsZones =
           </div>
 
 
-          {/* ==================================================
-              TURBIDITY
-          =================================================== */}
+          {/* TURBIDITY */}
 
           <div className="bg-gray-950/20 border border-gray-800 rounded-xl p-4">
 
-            <div className="mb-3">
+            <p className="text-gray-400">
+              Turbidity
+            </p>
 
-              <p className="text-gray-400">
-                Turbidity
-              </p>
+            <p className="text-2xl font-bold text-yellow-400 mt-2">
 
-              <p className="text-2xl font-bold text-yellow-400">
+              {graphZone
+                ? getSensorValues(
+                    graphZone
+                  ).turbidity
+                : '--'}
 
-                {graphZone
-                  ? getSensorValues(
-                      graphZone
-                    ).turbidity
-                  : '--'}
+              <span className="text-sm text-gray-500 ml-1">
+                NTU
+              </span>
 
-                <span className="text-sm text-gray-500 ml-1">
-                  NTU
-                </span>
-
-              </p>
-
-            </div>
+            </p>
 
 
-            <div className="h-56">
+            <div className="h-56 mt-3">
 
               <ResponsiveContainer
                 width="100%"
@@ -1932,7 +1701,7 @@ let analyticsZones =
               >
 
                 <LineChart
-                  data={trendData}
+                  data={historyData}
                 >
 
                   <CartesianGrid
@@ -1959,12 +1728,16 @@ let analyticsZones =
                       )
                     }
                     stroke="#6B7280"
-                    tick={{ fontSize: 11 }}
+                    tick={{
+                      fontSize: 11,
+                    }}
                   />
 
                   <YAxis
                     stroke="#6B7280"
-                    tick={{ fontSize: 11 }}
+                    tick={{
+                      fontSize: 11,
+                    }}
                     domain={[
                       'auto',
                       'auto',
@@ -2011,7 +1784,7 @@ let analyticsZones =
         </h2>
 
         <p className="text-gray-500 mt-1">
-          Only zones requiring attention are shown
+          Zones requiring attention
         </p>
 
 
@@ -2020,113 +1793,79 @@ let analyticsZones =
           {problemZones.length === 0 ? (
 
             <div className="p-6 rounded-xl border border-gray-800 bg-gray-900/20 text-gray-500">
-
               All monitored zones are operating normally.
-
             </div>
 
           ) : (
 
-            problemZones.map(
-              (zone) => {
+            problemZones.map((zone) => {
 
-                const condition =
-                  getCondition(zone);
+              const condition =
+                getCondition(zone);
 
-                const risk =
-                  numberValue(
-                    zone?.risk?.score
-                  );
+              const risk =
+                numberValue(
+                  zone?.risk?.score ??
+                  zone?.risk?.wrs
+                );
 
-                const priority =
-                  getPriority(zone);
+              const priority =
+                getPriority(zone);
 
-                const priorityScore =
-                  numberValue(
-                    priority?.score
-                  );
+              const priorityScore =
+                numberValue(
+                  priority?.score
+                );
 
-                const locationScore =
-                  numberValue(
-                    priority?.location_score
-                  );
-
-
-                return (
-
-                  <div
-                    key={zone.zone}
-                    className="p-5 rounded-xl border border-gray-800 bg-gray-900/20"
-                  >
-
-                    <div className="flex items-center justify-between">
+              const locationScore =
+                numberValue(
+                  priority?.location_score
+                );
 
 
-                      {/* LEFT */}
+              return (
+                <div
+                  key={zone.zone}
+                  className="p-5 rounded-xl border border-gray-800 bg-gray-900/20"
+                >
 
-                      <div className="flex items-center gap-5">
+                  <div className="flex items-center justify-between">
 
-                        <span
-                          className={`
-                            px-4 py-2
-                            rounded-full
-                            font-bold
-                            ${getPriorityClass(
-                              priority?.priority
-                            )}
-                          `}
-                        >
-                          {priority?.priority}
-                        </span>
+                    <div className="flex items-center gap-5">
 
-
-                        <div>
-
-                          <p className="text-xl font-semibold">
-                            {zone.zone}
-                          </p>
-
-                          <p
-                            className={`
-                              text-sm
-                              ${getStatusClass(
-                                condition
-                              )}
-                            `}
-                          >
-                            {condition}
-                          </p>
-
-                          <p className="text-xs text-gray-500 mt-1">
-                            {zone.device_id}
-                          </p>
-
-                        </div>
-
-                      </div>
+                      <span
+                        className={`
+                          px-4 py-2
+                          rounded-full
+                          font-bold
+                          ${getPriorityClass(
+                            priority?.priority
+                          )}
+                        `}
+                      >
+                        {priority?.priority || '—'}
+                      </span>
 
 
-                      {/* RIGHT */}
+                      <div>
 
-                      <div className="text-right">
+                        <p className="text-xl font-semibold">
+                          {zone.zone}
+                        </p>
 
                         <p
                           className={`
-                            text-2xl font-bold
-                            ${
-                              priorityScore >= 70
-                                ? 'text-red-400'
-                                : priorityScore >= 40
-                                ? 'text-yellow-400'
-                                : 'text-accentTeal'
-                            }
+                            text-sm
+                            ${getStatusClass(
+                              condition
+                            )}
                           `}
                         >
-                          {priorityScore}/100
+                          {condition}
                         </p>
 
-                        <p className="text-sm text-gray-500">
-                          Priority Score
+                        <p className="text-xs text-gray-500 mt-1">
+                          {zone.device_id}
                         </p>
 
                       </div>
@@ -2134,75 +1873,98 @@ let analyticsZones =
                     </div>
 
 
-                    {/* PRIORITY FACTORS */}
+                    <div className="text-right">
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5 pt-4 border-t border-gray-800">
+                      <p
+                        className={`
+                          text-2xl font-bold
+                          ${
+                            priorityScore >= 70
+                              ? 'text-red-400'
+                              : priorityScore >= 40
+                              ? 'text-yellow-400'
+                              : 'text-accentTeal'
+                          }
+                        `}
+                      >
+                        {priority
+                          ? `${priorityScore}/100`
+                          : `${risk}/100`}
+                      </p>
 
-
-                      <div>
-
-                        <p className="text-xs text-gray-500">
-                          Sensor / WRS Risk
-                        </p>
-
-                        <p className="font-semibold">
-                          {risk}/100
-                        </p>
-
-                      </div>
-
-
-                      <div>
-
-                        <p className="text-xs text-gray-500">
-                          Location Score
-                        </p>
-
-                        <p className="font-semibold">
-                          {locationScore}
-                        </p>
-
-                      </div>
-
-
-                      <div>
-
-                        <p className="text-xs text-gray-500">
-                          Population
-                        </p>
-
-                        <p className="font-semibold">
-                          {numberValue(
-                            zone?.population
-                          ).toLocaleString()}
-                        </p>
-
-                      </div>
-
-
-                      <div>
-
-                        <p className="text-xs text-gray-500">
-                          Critical Area
-                        </p>
-
-                        <p className="font-semibold">
-                          {zone?.critical_area
-                            ? 'YES'
-                            : 'NO'}
-                        </p>
-
-                      </div>
-
+                      <p className="text-sm text-gray-500">
+                        {priority
+                          ? 'Priority Score'
+                          : 'Risk Score'}
+                      </p>
 
                     </div>
 
                   </div>
 
-                );
 
-              }
-            )
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5 pt-4 border-t border-gray-800">
+
+                    <div>
+
+                      <p className="text-xs text-gray-500">
+                        Sensor / WRS Risk
+                      </p>
+
+                      <p className="font-semibold">
+                        {risk}/100
+                      </p>
+
+                    </div>
+
+
+                    <div>
+
+                      <p className="text-xs text-gray-500">
+                        Location Score
+                      </p>
+
+                      <p className="font-semibold">
+                        {locationScore}
+                      </p>
+
+                    </div>
+
+
+                    <div>
+
+                      <p className="text-xs text-gray-500">
+                        Population
+                      </p>
+
+                      <p className="font-semibold">
+                        {numberValue(
+                          zone?.population
+                        ).toLocaleString()}
+                      </p>
+
+                    </div>
+
+
+                    <div>
+
+                      <p className="text-xs text-gray-500">
+                        Critical Area
+                      </p>
+
+                      <p className="font-semibold">
+                        {zone?.critical_area
+                          ? 'YES'
+                          : 'NO'}
+                      </p>
+
+                    </div>
+
+                  </div>
+
+                </div>
+              );
+            })
 
           )}
 
@@ -2210,9 +1972,6 @@ let analyticsZones =
 
       </div>
 
-
     </div>
-
   );
-
 }

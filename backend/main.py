@@ -14,7 +14,6 @@ from backend.database.influxdb import (
 )
 
 from backend.mqtt_service import start_mqtt_background
-from backend.ai_assistant import router as ai_router
 
 
 app = FastAPI(
@@ -22,9 +21,6 @@ app = FastAPI(
     description="Smart Water Network Monitoring and Analytics",
     version="1.0"
 )
-
-
-app.include_router(ai_router)
 
 
 app.add_middleware(
@@ -578,6 +574,236 @@ def latest_analytics():
                 analyzed_zones
             )
         }
+    }
+
+
+# ============================================================
+# LOCAL HYDROIQ AI CHAT
+# ============================================================
+# This endpoint intentionally does NOT require Gemini or any
+# external API key. It answers from the same live analytics
+# already used by the dashboard.
+
+class AIRequest(BaseModel):
+    message: str
+    context: dict = {}
+
+
+@app.post("/ai/chat")
+def ai_chat(request: AIRequest):
+
+    message = request.message.strip().lower()
+
+    try:
+        analytics = latest_analytics()
+        zones = analytics.get("zones", [])
+    except Exception:
+        zones = []
+
+    leaks = [
+        zone for zone in zones
+        if zone.get("stage") == "LEAK"
+        or zone.get("condition", {}).get("condition") == "LEAK"
+        or zone.get("leak", {}).get("leak_detected") is True
+    ]
+
+    quality = [
+        zone for zone in zones
+        if zone.get("stage") == "WATER_QUALITY"
+        or zone.get("condition", {}).get("condition") == "WATER_QUALITY"
+    ]
+
+    faults = [
+        zone for zone in zones
+        if zone.get("stage") == "SENSOR_FAULT"
+        or zone.get("condition", {}).get("condition") == "SENSOR_FAULT"
+    ]
+
+    anomalies = [
+        zone for zone in zones
+        if zone.get("stage") == "EARLY_ANOMALY"
+        or zone.get("condition", {}).get("condition") == "EARLY_ANOMALY"
+    ]
+
+    # Highest-risk zone
+    highest = None
+    if zones:
+        highest = max(
+            zones,
+            key=lambda z: float(
+                z.get("risk", {}).get("score", 0) or 0
+            )
+        )
+
+    # --------------------------------------------------------
+    # Question-specific answers
+    # --------------------------------------------------------
+
+    if "what is a leak" in message or (
+        "what" in message and "leak" in message
+    ):
+        response = (
+            "A pipeline leak is an abnormal loss of water from the "
+            "network. HydroIQ detects it by combining pressure drop, "
+            "flow increase and acoustic evidence. A strong leak signal "
+            "should trigger immediate inspection and, where required, "
+            "isolation of the affected zone."
+        )
+
+    elif "highest risk" in message or "most risky" in message:
+        if highest:
+            zone_name = highest.get("zone", "Unknown")
+            score = highest.get("risk", {}).get("score", 0)
+            stage = highest.get("stage", "NORMAL")
+            response = (
+                f"{zone_name} currently has the highest network risk "
+                f"with a WRS of {score}/100. Current condition: "
+                f"{stage}. "
+            )
+
+            if leaks and highest.get("zone") == leaks[0].get("zone"):
+                response += (
+                    "The main concern is a detected leak, so immediate "
+                    "inspection and isolation is recommended."
+                )
+            elif quality and highest.get("zone") == quality[0].get("zone"):
+                response += (
+                    "The main concern is water quality; verify the "
+                    "readings and inspect the affected zone."
+                )
+            else:
+                response += (
+                    "Prioritize inspection of this zone before lower-risk "
+                    "areas."
+                )
+        else:
+            response = "Live network risk data is currently unavailable."
+
+    elif (
+        "leak" in message
+        or "leaks" in message
+        or "leak situation" in message
+    ):
+        if leaks:
+            zone = leaks[0]
+            response = (
+                f"{zone.get('zone', 'Unknown')} currently shows a "
+                f"pipeline leak. Pressure is "
+                f"{zone.get('pressure', '--')} bar, flow is "
+                f"{zone.get('flow', '--')} L/min and acoustic amplitude "
+                f"is {zone.get('acoustic', '--')}. Immediate inspection "
+                f"and isolation is recommended."
+            )
+        else:
+            response = (
+                "No active pipeline leak is currently detected across "
+                "the monitored zones."
+            )
+
+    elif (
+        "water quality" in message
+        or "quality issue" in message
+        or "quality concern" in message
+        or "water-quality" in message
+    ):
+        if quality:
+            zone = quality[0]
+            response = (
+                f"{zone.get('zone', 'Unknown')} currently shows a "
+                f"water-quality concern. pH is {zone.get('ph', '--')}, "
+                f"TDS is {zone.get('tds', '--')} ppm and turbidity is "
+                f"{zone.get('turbidity', '--')} NTU. Verify the readings "
+                f"and inspect the zone."
+            )
+        else:
+            response = (
+                "No active water-quality concern is currently detected "
+                "across the monitored zones."
+            )
+
+    elif (
+        "sensor health" in message
+        or "unhealthy sensor" in message
+        or "sensor fault" in message
+        or "suspicious sensor" in message
+    ):
+        if faults:
+            names = ", ".join(
+                zone.get("zone", "Unknown")
+                for zone in faults
+            )
+            response = (
+                f"Sensor fault detected in {names}. Inspect or "
+                f"recalibrate the affected sensor and validate its "
+                f"readings against nearby nodes."
+            )
+        else:
+            response = (
+                "No active sensor fault is currently reported by the "
+                "HydroIQ analytics engine."
+            )
+
+    elif (
+        "anomaly" in message
+        or "early warning" in message
+        or "early anomaly" in message
+    ):
+        if anomalies:
+            names = ", ".join(
+                zone.get("zone", "Unknown")
+                for zone in anomalies
+            )
+            response = (
+                f"{names} currently show an early network anomaly. "
+                f"Preventive inspection is recommended before the "
+                f"condition develops further."
+            )
+        else:
+            response = (
+                "No early network anomaly is currently detected."
+            )
+
+    elif (
+        "briefing" in message
+        or "operational" in message
+        or "network status" in message
+        or "current status" in message
+    ):
+        risk = analytics.get("network", {}).get("risk_score", 0)
+        alert_count = analytics.get("network", {}).get("active_alerts", 0)
+        zone_count = analytics.get("network", {}).get("monitored_zones", len(zones))
+
+        response = (
+            f"HydroIQ is currently monitoring {zone_count} zones. "
+            f"Network risk is {risk}/100 with {alert_count} active "
+            f"alert(s). "
+        )
+
+        if leaks:
+            response += f"Leak concern: {leaks[0].get('zone')}. "
+        if quality:
+            response += f"Water-quality concern: {quality[0].get('zone')}. "
+        if faults:
+            response += f"Sensor fault: {faults[0].get('zone')}. "
+        if anomalies:
+            response += f"Early anomaly: {anomalies[0].get('zone')}. "
+
+        if not leaks and not quality and not faults and not anomalies:
+            response += "All monitored zones are currently operating normally."
+
+    else:
+        response = (
+            "I can analyze the live HydroIQ network. Try asking: "
+            "\"Which zone has the highest risk?\", "
+            "\"Explain the current leak situation\", "
+            "\"Are there any water quality concerns?\", or "
+            "\"Give me an operational briefing.\""
+        )
+
+    return {
+        "response": response,
+        "status": "ok",
+        "source": "HydroIQ local analytics"
     }
 
 
