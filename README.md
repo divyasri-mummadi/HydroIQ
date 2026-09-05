@@ -151,6 +151,8 @@ HTTP-based alert integration
 
 ## Project Structure
 
+```text
+
 HydroIQ/
 │
 ├── analytics/
@@ -196,12 +198,12 @@ HydroIQ/
 ├── .gitignore
 └── README.md
 
-
+```
 ## Monitored Zones
 
 HydroIQ currently supports four monitored zones:
 
-Device	Zone
+Device	      Zone
 ESP32_Node_1	Zone_A
 ESP32_Node_2	Zone_B
 ESP32_Node_3	Zone_C
@@ -209,17 +211,18 @@ ESP32_Node_4	Zone_D
 
 Each zone can have its own sensor readings, network condition, risk score, priority, and operational context.
 
+
 ## Network Conditions
 
 HydroIQ classifies network conditions into multiple states:
 
-Condition	Description
-NORMAL	Network operating normally
-EARLY_ANOMALY	Early abnormal behaviour detected
-LEAK	Multiple signals indicate a potential leak
-WATER_QUALITY	Water-quality parameters require attention
-SENSOR_FAULT	Sensor readings require investigation
-CRITICAL	High-severity network condition
+Condition	                Description
+NORMAL            	Network operating normally
+EARLY_ANOMALY	      Early abnormal behaviour detected
+LEAK	              Multiple signals indicate a potential leak
+WATER_QUALITY	      Water-quality parameters require attention
+SENSOR_FAULT	      Sensor readings require investigation
+CRITICAL	          High-severity network condition
 
 
 ## Water Risk Score
@@ -227,6 +230,7 @@ CRITICAL	High-severity network condition
 The Water Risk Score (WRS) provides a unified 0–100 representation of network risk.
 
 It helps operators answer:
+```
 What is happening?
         ↓
 How severe is it?
@@ -236,10 +240,10 @@ Which zone is affected?
 How important is the affected area?
         ↓
 What should be handled first?
-
+```
 
 ## Analytics Pipeline
-
+```
 Sensor Telemetry
        │
        ▼
@@ -275,7 +279,7 @@ Leak Detection    Water Quality
                         ▼
                   Notifications
 
-
+```
 ## Leak Detection
 
 HydroIQ does not rely on a single sensor reading.
@@ -306,7 +310,7 @@ The result is surfaced directly on the dashboard so operators can quickly identi
 ## Alert Prioritization
 
 Detected incidents are converted into actionable priorities.
-
+```
 Incident
    ↓
 Severity
@@ -332,7 +336,7 @@ n8n Workflow
 Split / Filter Alerts
        ↓
 External Notification
-
+```
 This makes the system capable of moving from:  Detection → Decision → Automated Action
 
 ## AI Intelligence Copilot
@@ -387,7 +391,7 @@ Displays monitored sensor nodes and telemetry.
 ## Prototype & Demo
 
 The working prototype demonstrates the complete pipeline:
-
+```
 INPUT
 IoT sensor telemetry
         ↓
@@ -402,7 +406,7 @@ Risk + Priority + Alerts
         ↓
 USER BENEFIT
 Faster detection and better maintenance decisions
-
+```
 
 ## Validation
 
@@ -450,7 +454,7 @@ More advanced predictive maintenance models
 ## Impact
 
 HydroIQ aims to help water utilities move from:
-
+```
 Reactive Monitoring
         ↓
 Early Detection
