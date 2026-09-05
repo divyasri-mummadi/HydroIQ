@@ -118,20 +118,20 @@ Integrates with n8n to trigger automated operational workflows and notifications
 
 
 ## Technology Stack
-# Hardware / IoT
+### Hardware / IoT
 ESP32
 IoT sensor nodes
 Wokwi simulation
-# Communication
+### Communication
 MQTT
 EMQX
-# Backend
+### Backend
 Python
 FastAPI
 Pydantic
-# Data Storage
+### Data Storage
 InfluxDB
-# Analytics
+### Analytics
 Python
 Multi-signal leak detection
 Water-quality analysis
@@ -139,14 +139,15 @@ Sensor health analysis
 Condition classification
 Water Risk Score
 Priority calculation
-# Frontend
+### Frontend
 React
 Tailwind CSS
 Axios
 Lucide Icons
-# Automation
+### Automation
 n8n
 HTTP-based alert integration
+
 
 ## Project Structure
 
