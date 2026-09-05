@@ -439,7 +439,7 @@ The architecture is designed to allow the prototype to evolve from simulation to
 
 
 ## Future Scope
-
+```
 LoRaWAN-based long-range sensor deployment
 Edge AI for local anomaly detection
 Advanced ML-based failure prediction
@@ -450,7 +450,7 @@ Automated valve control
 SCADA integration
 Cloud-scale deployment
 More advanced predictive maintenance models
-
+```
 
 ## Impact
 
